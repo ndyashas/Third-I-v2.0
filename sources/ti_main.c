@@ -318,6 +318,8 @@ int ti_write(const char *apath, const char *buf, size_t size, off_t offset, stru
 	if(apath == NULL) return(-ENOENT);
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
+	nd->m_time = time(NULL);
+	nd->a_time = time(NULL);
 	nd->size = size + offset;
 	if(nd->data == NULL)
 		nd->data = (char *)malloc(sizeof(char)*(nd->size));
@@ -334,6 +336,7 @@ int ti_read(const char *apath, char *buf, size_t size, off_t offset,struct fuse_
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
 	if(nd->size == 0) return(0);
+	nd->a_time = time(NULL);
 	memcpy(buf, nd->data + offset, nd->size);
 	return(size);
 }
@@ -350,6 +353,7 @@ int ti_chmod(const char *apath, mode_t new){
 	if(apath == NULL) return(-ENOENT);
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
+	nd->m_time = time(NULL);
 	nd->permissions = new;
 	return(0);
 }
@@ -361,6 +365,8 @@ int ti_truncate(const char *apath, off_t size){
 	if(nd == NULL) return(-ENOENT);
 	if(nd->size == 0) return(0);
 	free(nd->data);
+	nd->m_time = time(NULL);
+	nd->a_time = time(NULL);
 	nd->data = (char*)malloc(sizeof(char));
 	return(0);
 }
