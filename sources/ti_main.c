@@ -9,12 +9,6 @@
 #include <errno.h>
 #include <stdint.h>
 
-typedef struct DATAN{
-	char *data;
-	off_t size;
-	struct DATAN *next;
-	struct DATAN *prev;
-}DATAN;
 
 typedef struct INODE{
     char * path;                    // Path upto node
@@ -32,12 +26,13 @@ typedef struct INODE{
     unsigned long int i_number;     // Inode number of the node in disk    
     struct INODE * parent;          // Pointer to parent node
     struct INODE ** children;       // Pointers to children nodes
-    struct DATAN * datac;          // data stored in the directory
+    char * data;          // data stored in the directory
 }INODE;
 
 
 INODE *ROOT;
 unsigned long int IN = 1;
+int BLOCKSZ = 4096;
 
 mode_t USR_NPF = S_IRUSR | S_IWUSR; 
 mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
@@ -61,6 +56,8 @@ int ti_chmod(const char *, mode_t );
 int ti_truncate(const char *, off_t );
 int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info *);
 int ti_access(const char *, int);
+int ti_mknod(const char *, mode_t, dev_t);
+int ti_utime(const char *, struct utimbuf *);
 
 static struct fuse_operations operations = {
 	.getattr	= ti_getattr,
@@ -68,11 +65,13 @@ static struct fuse_operations operations = {
 	.mkdir      = ti_mkdir,
 	.rmdir      = ti_rmdir,
 	.open       = ti_open,
-	/*.read		= ti_read,
-	.unlink     = ti_unlink,
-    .chmod		= ti_chmod,
-    .write		= ti_write,
-	.truncate   = ti_truncate,*/
+	.read		= ti_read,
+	.write		= ti_write,
+	.mknod      = ti_mknod,
+    .unlink     = ti_unlink,
+	/*  .chmod		= ti_chmod,*/
+	.truncate   = ti_truncate,
+	.utime      = ti_utime,
 	.access	    = ti_access
 };
 
@@ -154,25 +153,23 @@ INODE * getNodeFromPath(char * apath, INODE *root){
 }
 
 
-int delNode(char *apath, char type){
+int delNode(char *apath){
 	int i, flag = 0;
 	if(apath == NULL) return(0);
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
 	INODE *parent = getNodeFromPath(getDir(path), ROOT);
 	if(parent == NULL) return(0);
-	if(type == 'd'){
-		for(i=0; i<parent->num_children; i++){
-			if(strcmp((parent->children[i])->path, path) == 0){
-				if((parent->children[i])->num_children != 0) return(-ENOTEMPTY);
-				free(parent->children[i]);
-				parent->children[i] = (INODE *)malloc(sizeof(INODE));
-				flag = 1;
-			}
-			if(flag){
-				if(i != parent->num_children-1)
-					parent->children[i] = parent->children[i+1];
-			}
+	for(i=0; i<parent->num_children; i++){
+		if(strcmp((parent->children[i])->path, path) == 0){
+			if((parent->children[i]->type == 'd') && ((parent->children[i])->num_children != 0)) return(-ENOTEMPTY);
+			free(parent->children[i]);
+			parent->children[i] = (INODE *)malloc(sizeof(INODE));
+			flag = 1;
+		}
+		if(flag){
+			if(i != parent->num_children-1)
+				parent->children[i] = parent->children[i+1];
 		}
 	}
 	parent->num_children -= 1;
@@ -202,6 +199,21 @@ int addNode(char * apath, char type){
 	return(0);
 }
 
+/*
+char * getData(INODE * root){
+	if((root == NULL) || (root->datac == NULL) || (root->type == 'd')) return(NULL);
+	DATAN *iter = NULL;
+	int size = root->size;
+	char *toret = (char *)malloc(sizeof(char)*(size+1));
+	iter = root->datac;
+	while(iter != NULL){
+		strcat(toret, iter->data);
+		iter = iter->next;
+	}
+	return(toret);
+}
+*/
+
 INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	INODE *ret = (INODE*)malloc(sizeof(INODE));
 	ret->path = (char*)malloc(sizeof(char)*strlen(path));
@@ -226,7 +238,7 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	ret->i_number = IN++;
 	ret->parent = parent;
 	ret->children = NULL;
-	ret->datac = NULL;
+	ret->data = NULL;
 	return(ret);
 }
 
@@ -251,7 +263,7 @@ int ti_getattr(const char *apath, struct stat *st){
 	else st->st_nlink = 1;
 
 	printf("**********************\n");
-	printf("Inode number %d\n", nd->i_number);
+	printf("Inode number %ld\n", nd->i_number);
 	printf("Name %s\n", nd->name);
 	printf("Path %s\n", nd->path);
 	printf("Number of children %d\n", nd->num_children);
@@ -294,7 +306,7 @@ int ti_mkdir(const char * apath, mode_t x){
 
 int ti_rmdir(const char * apath){
 	// printf("ti_mkdir() called with path %s\n", apath);
-	int retVal = delNode((char *) apath, 'd');
+	int retVal = delNode((char *) apath);
 	return(retVal);
 }
 
@@ -306,15 +318,36 @@ int ti_open(const char *apath, struct fuse_file_info *fi){
 }
 
 
-int ti_unlink(const char *apath){
-	return(0);
+int ti_mknod(const char * apath, mode_t x, dev_t y){
+	// printf("ti_mknod() called with path %s\n", apath);
+	int retVal = addNode((char*) apath, 'f');
+	return(retVal);
+}
+
+int ti_write(const char *apath, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
+	if(apath == NULL) return(-ENOENT);
+	INODE * nd = getNodeFromPath((char *) apath, ROOT);
+	if(nd == NULL) return(-ENOENT);
+	nd->size = size + offset;
+    memcpy(nd->data + offset, buf, size);
+	return(size);
 }
 
 
 int ti_read(const char *apath, char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
 	if(apath == NULL) return(-ENOENT);
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
-	
+	if(nd == NULL) return(-ENOENT);
+	if(nd->size == 0) return(0);
+	memcpy(buf, nd->data + offset, nd->size);
+	return(size);
+}
+
+
+int ti_unlink(const char *apath){
+	// printf("ti_unlink() called with path %s\n", apath);
+	int retVal = delNode((char *) apath);
+	return(retVal);
 }
 
 
@@ -324,19 +357,23 @@ int ti_chmod(const char *apath, mode_t new){
 
 
 int ti_truncate(const char *apath, off_t size){
-	return(0);
-}
-
-
-int ti_write(const char *apath, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
+	if(apath == NULL) return(-ENOENT);
+	INODE * nd = getNodeFromPath((char *) apath, ROOT);
+	if(nd == NULL) return(-ENOENT);
+	if(nd->size == 0) return(0);
+	free(nd->data);
+	nd->data = (char*)malloc(sizeof(char));
 	return(0);
 }
 
 
 int ti_access(const char * apath, int mask){
-	int grant = 1;
-		
+	int grant = 1;		
 	if(grant)
 		return(0);
 	return(-EACCES);
+}
+
+int ti_utime(const char *apath, struct utimbuf *tv){
+	return 0;
 }
