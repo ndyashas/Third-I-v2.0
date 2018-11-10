@@ -1,7 +1,6 @@
 FLAGS  = `pkg-config fuse --cflags --libs` -DFUSE_USE_VERSION=25 -lm -g
-INCDIR = include
 SRCDIR = sources
-FILES  = 
+FILES  = $(SRCDIR)/ti_main.c
 OPFLAG = -o fs.ti
 COMPIR = gcc
 
@@ -12,12 +11,10 @@ run : compile
 	./fs.ti -f mountPoint -o nonempty
 
 debug : compile
-	valgrind --track-origins=yes ./fs.ti -d -f -s mountPoint -o nonempty
+	valgrind --track-origins=yes --leak-check=full ./fs.ti -d -f -s mountPoint -o nonempty
 
 compile :
-	$(COMPIR) -Wall -g $(FILES) -I $(INCDIR) $(FLAGS) $(OPFLAG)
-
-clean: stop
+	$(COMPIR) -Wall -g $(FILES) $(FLAGS) $(OPFLAG)
 
 stop :
 	rm -rf *.ti *.o
@@ -25,3 +22,5 @@ stop :
 
 format :
 	rm -rf metaFiles/*
+	rm -rf *.ti *.o
+	sudo umount mountPoint
