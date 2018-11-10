@@ -69,7 +69,7 @@ static struct fuse_operations operations = {
 	.write		= ti_write,
 	.mknod      = ti_mknod,
     .unlink     = ti_unlink,
-	/*  .chmod		= ti_chmod,*/
+	.chmod		= ti_chmod,
 	.truncate   = ti_truncate,
 	.utime      = ti_utime,
 	.access	    = ti_access
@@ -199,20 +199,6 @@ int addNode(char * apath, char type){
 	return(0);
 }
 
-/*
-char * getData(INODE * root){
-	if((root == NULL) || (root->datac == NULL) || (root->type == 'd')) return(NULL);
-	DATAN *iter = NULL;
-	int size = root->size;
-	char *toret = (char *)malloc(sizeof(char)*(size+1));
-	iter = root->datac;
-	while(iter != NULL){
-		strcat(toret, iter->data);
-		iter = iter->next;
-	}
-	return(toret);
-}
-*/
 
 INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	INODE *ret = (INODE*)malloc(sizeof(INODE));
@@ -223,9 +209,11 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	ret->type = type;
 	if(type == 'd'){  
         ret->permissions = S_IFDIR | 0755;
+		ret->size = BLOCKSZ;
     }     
     else{
-    	ret->permissions = S_IFREG | 0644; 
+    	ret->permissions = S_IFREG | 0644;
+		ret->size = 0;
     } 
 	ret->user_id = getuid();
 	ret->group_id = getgid();
@@ -234,7 +222,6 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	time(&(ret->a_time));
 	time(&(ret->m_time));
 	time(&(ret->b_time));
-	ret->size = 0;
 	ret->i_number = IN++;
 	ret->parent = parent;
 	ret->children = NULL;
@@ -267,7 +254,10 @@ int ti_getattr(const char *apath, struct stat *st){
 	printf("Name %s\n", nd->name);
 	printf("Path %s\n", nd->path);
 	printf("Number of children %d\n", nd->num_children);
+	if(nd->type == 'f')
+		printf("Data of file : %s\n", nd->data);
 	printf("**********************\n");
+ 
 	
 	st->st_ino = nd->i_number;
 	st->st_nlink += nd->num_children;
@@ -329,7 +319,12 @@ int ti_write(const char *apath, const char *buf, size_t size, off_t offset, stru
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
 	nd->size = size + offset;
-    memcpy(nd->data + offset, buf, size);
+	if(nd->data == NULL)
+		nd->data = (char *)malloc(sizeof(char)*(nd->size));
+	else
+		nd->data = (char *)realloc(nd->data, sizeof(char)*(nd->size));
+	memcpy(nd->data + offset, buf, size);
+	nd->data[((nd->size)--) - 1] = '\0';
 	return(size);
 }
 
@@ -352,6 +347,10 @@ int ti_unlink(const char *apath){
 
 
 int ti_chmod(const char *apath, mode_t new){
+	if(apath == NULL) return(-ENOENT);
+	INODE * nd = getNodeFromPath((char *) apath, ROOT);
+	if(nd == NULL) return(-ENOENT);
+	nd->permissions = new;
 	return(0);
 }
 
