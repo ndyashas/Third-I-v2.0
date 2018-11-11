@@ -39,7 +39,13 @@ mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
 mode_t GRP_NPF = S_IRGRP | S_IWGRP;
 mode_t GRP_NPD = S_IRGRP | S_IWGRP | S_IFDIR;
 
+char * reverse(char *, int);
+char * getName(char **);
+char * getDir(char *);
 INODE * getNodeFromPath(char *, INODE *);
+int delNode(char *);
+int addNode(char *, char);
+
 
 INODE * initializeNode( char *, char *, char,  INODE *);
 void initializeTIFS(INODE **);
@@ -50,13 +56,13 @@ int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_
 int ti_mkdir(const char *, mode_t );
 int ti_rmdir(const char *);
 int ti_open(const char *, struct fuse_file_info *);
-int ti_unlink(const char *);
+int ti_mknod(const char *, mode_t, dev_t);
+int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info *);
 int ti_read(const char *, char *, size_t , off_t ,struct fuse_file_info *);
+int ti_unlink(const char *);
 int ti_chmod(const char *, mode_t );
 int ti_truncate(const char *, off_t );
-int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info *);
 int ti_access(const char *, int);
-int ti_mknod(const char *, mode_t, dev_t);
 int ti_utime(const char *, struct utimbuf *);
 
 static struct fuse_operations operations = {
@@ -65,14 +71,14 @@ static struct fuse_operations operations = {
 	.mkdir      = ti_mkdir,
 	.rmdir      = ti_rmdir,
 	.open       = ti_open,
-	.read		= ti_read,
-	.write		= ti_write,
 	.mknod      = ti_mknod,
+	.write		= ti_write,
+	.read		= ti_read,
     .unlink     = ti_unlink,
 	.chmod		= ti_chmod,
 	.truncate   = ti_truncate,
+	.access	    = ti_access,
 	.utime      = ti_utime,
-	.access	    = ti_access
 };
 
 int main( int argc, char *argv[] ){
@@ -144,7 +150,7 @@ INODE * getNodeFromPath(char * apath, INODE *root){
 	INODE *retn;
 	if((path == NULL)||(root == NULL)||(strcmp(path, "") == 0)) return(NULL);	
 	if(strcmp(root->path, path) == 0) return(root);
-
+	
 	for(i=0; i<root->num_children; i++){
 		retn = getNodeFromPath(path, (root->children)[i]);
 		if(retn != NULL)return(retn);
@@ -191,7 +197,7 @@ int addNode(char * apath, char type){
 	parent->num_children += 1;
 	parent->children = (INODE **)realloc(parent->children, sizeof(INODE *) * parent->num_children);
 	parent->children[parent->num_children - 1] = initializeNode(apath, getName(&path), type, parent);
-
+	
 	
 	/* printf("Name of the node is %s\n", parent->children[parent->num_children - 1]->name); */
 	/* printf("Path of the node is %s\n", parent->children[parent->num_children - 1]->path); */
@@ -234,7 +240,7 @@ void initializeTIFS(INODE **rt){
 	if(access("metaFiles/hdisk", F_OK ) != -1){
 	    // printf("Loading data from disk ...\n");
 	}
-
+	
 	else{
 		// printf("No old meta files found initializing new TIFS\n");
 		(*rt) = initializeNode( "/", "TIROOT", 'd',  (*rt));
@@ -248,7 +254,7 @@ int ti_getattr(const char *apath, struct stat *st){
 	if(nd == NULL) return(-ENOENT);
 	if(nd->type == 'd') st->st_nlink = 2;
 	else st->st_nlink = 1;
-
+	
 	printf("**********************\n");
 	printf("Inode number %ld\n", nd->i_number);
 	printf("Name %s\n", nd->name);
@@ -257,7 +263,7 @@ int ti_getattr(const char *apath, struct stat *st){
 	if(nd->type == 'f')
 		printf("Data of file : %s\n", nd->data);
 	printf("**********************\n");
- 
+	
 	
 	st->st_ino = nd->i_number;
 	st->st_nlink += nd->num_children;
@@ -275,10 +281,10 @@ int ti_readdir(const char *apath, void *buffer, fuse_fill_dir_t filler, off_t of
 	// printf("ti_readdir() called with path %s\n", apath);
 	filler(buffer, ".", NULL, 0 ); 
 	filler(buffer, "..", NULL, 0 );
-
+	
 	INODE *nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
-
+	
 	nd->a_time=time(NULL);
 	for(int i = 0; i < nd->num_children; i++){
 		filler( buffer, nd->children[i]->name, NULL, 0 );
