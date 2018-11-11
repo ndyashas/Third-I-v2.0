@@ -105,6 +105,99 @@ void closeDisk(){
 	close(HDISK);
 }
 
+int getDnodeNumber(){
+	int dno;
+	openDisk();
+	lseek(HDISK, BLOCKSZ, SEEK_SET);
+	memset(DBMAP, '0', DNUM);
+	read(HDISK, DBMAP, DNUM);
+	for(dno=0; dno<DNUM; dno++) if(DBMAP[dno] == '0') break;
+	DBMAP[dno] = '1';
+	lseek(HDISK, BLOCKSZ, SEEK_SET);
+	write(HDISK, DBMAP, DNUM);
+	closeDisk();
+	return(dno);
+}
+
+void returnDnodeNumber(int dno){
+	// printf("returnDnodeNumber called\n");
+	openDisk();
+	lseek(HDISK, BLOCKSZ, SEEK_SET);
+	memset(DBMAP, '0', DNUM);
+	read(HDISK, DBMAP, DNUM);
+	IBMAP[dno] = '0';
+	lseek(HDISK, BLOCKSZ, SEEK_SET);
+	write(HDISK, DBMAP, DNUM);
+	closeDisk();
+}
+
+
+void storeInode(INODE *nd){
+	printf("storeInode() called\n");
+	if(nd == NULL) return;
+	int offset = (2 * BLOCKSZ) + (nd->i_number * INUM);
+	openDisk();
+	lseek(HDISK, offset, SEEK_SET);
+	write(HDISK, nd->path, sizeof(nd->path));
+	write(HDISK, nd->name, sizeof(nd->name));
+	write(HDISK, &(nd->type), sizeof(nd->type));
+	write(HDISK, &(nd->permissions), sizeof(nd->permissions));
+	write(HDISK, &(nd->user_id), sizeof(nd->user_id));
+	write(HDISK, &(nd->group_id), sizeof(nd->group_id));
+	write(HDISK, &(nd->num_children), sizeof(nd->num_children));
+	write(HDISK, &(nd->num_files), sizeof(nd->num_files));
+	write(HDISK, &(nd->a_time), sizeof(nd->a_time));
+	write(HDISK, &(nd->m_time), sizeof(nd->m_time));
+	write(HDISK, &(nd->b_time), sizeof(nd->b_time));
+	write(HDISK, &(nd->size), sizeof(nd->size));
+	printf("TILL HERE\n");
+	if(nd->datab != NULL)
+		write(HDISK, &(nd->datab), sizeof(nd->datab));
+	closeDisk();
+}
+
+
+INODE * getInode(int ino){
+	INODE *toret = (INODE *)malloc(sizeof(INODE));
+	char *buff = (char*)malloc(sizeof(char)*INUM);
+	openDisk();
+	int offset = (2 * BLOCKSZ) + (ino * INUM);
+	lseek(HDISK, offset, SEEK_SET);
+	read(HDISK, buff, sizeof(toret->path));
+	memcpy(toret->path, buff, sizeof(toret->path));
+	read(HDISK, buff, sizeof(toret->name));
+	memcpy(toret->name, buff, sizeof(toret->name));
+	read(HDISK, buff, sizeof(toret->type));
+	toret->type = *((char *)buff);
+	read(HDISK, buff, sizeof(toret->permissions));
+	toret->permissions = *((mode_t *)buff);
+	read(HDISK, buff, sizeof(toret->user_id));
+	toret->user_id = *((uid_t *)buff);
+	read(HDISK, buff, sizeof(toret->group_id));
+	toret->group_id = *((uid_t *)buff);
+	read(HDISK, buff, sizeof(toret->num_children));
+	toret->num_children = *((int *)buff);
+	read(HDISK, buff, sizeof(toret->num_files));
+	toret->num_files = *((int *)buff);
+	read(HDISK, buff, sizeof(toret->a_time));
+	toret->a_time = *((time_t *)buff);
+	read(HDISK, buff, sizeof(toret->m_time));
+	toret->m_time = *((time_t *)buff);
+	read(HDISK, buff, sizeof(toret->b_time));
+	toret->b_time = *((time_t *)buff);
+	read(HDISK, buff, sizeof(toret->size));
+	toret->size = *((off_t *)buff);
+	read(HDISK, buff, sizeof(toret->i_number));
+	toret->i_number = *((unsigned long int *)buff);
+	if(toret->type == 'f'){
+		read(HDISK, buff, sizeof(toret->datab));
+		memcpy(toret->datab, buff, sizeof(toret->datab));
+	}
+	closeDisk();
+	return(toret);
+}
+
+
 int getInodeNumber(){
 	// printf("getInodeNumber called\n");
 	int ino;
@@ -117,7 +210,7 @@ int getInodeNumber(){
 	lseek(HDISK, 0, SEEK_SET);
 	write(HDISK, IBMAP, INUM);
 	closeDisk();
-	return(ino+1);
+	return(ino);
 }
 
 void returnInodeNumber(int ino){
@@ -126,7 +219,7 @@ void returnInodeNumber(int ino){
 	lseek(HDISK, 0, SEEK_SET);
 	memset(IBMAP, '0', INUM);
 	read(HDISK, IBMAP, INUM);
-	IBMAP[ino-1] = '0';
+	IBMAP[ino] = '0';
 	lseek(HDISK, 0, SEEK_SET);
 	write(HDISK, IBMAP, INUM);
 	closeDisk();
@@ -275,7 +368,7 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	time(&(ret->m_time));
 	time(&(ret->b_time));
 	ret->i_number = getInodeNumber();
-	printf("Inode number is %d\n", ret->i_number);
+	printf("Inode number is %ld\n", ret->i_number);
 	ret->parent = parent;
 	ret->children = NULL;
 	ret->data = NULL;
@@ -290,6 +383,7 @@ void initializeTIFS(INODE **rt){
 	DBMAP = (char*)malloc(sizeof(char)*(DNUM));
 	if(access("metaFiles/HDISK.meta", F_OK ) != -1){
 		printf("Loading data from disk ...\n");
+		(*rt) = getInode(0);
 	}
 	
 	else{
@@ -304,8 +398,10 @@ void initializeTIFS(INODE **rt){
 		write(HDISK, buf, BLOCKSZ);
 		write(HDISK, buf, BLOCKSZ);
 		closeDisk();
-
+		
 		(*rt) = initializeNode( "/", "TIROOT", 'd',  (*rt));
+		storeInode((*rt));
+		(*rt) = getInode(0);
 	}
 }
 
