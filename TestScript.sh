@@ -24,3 +24,4 @@ echo "Wrote 'THIS IS FILE DATA' to CONTENTFILE";
 echo "THIS IS FILE DATA" > mountPoint/CONTENTFILE;
 echo "This is the content of CONTENTFILE\n";
 cat mountPoint/CONTENTFILE;
+cat README.md > mountPoint/NEW-README-COPY.md;
