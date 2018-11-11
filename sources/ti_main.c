@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 #define BLOCKSZ 4096
-#define INUM 50
+#define INUM 512
 #define DNUM 4096
 #define DPERN 10
 
@@ -136,6 +136,7 @@ void storeInode(INODE *nd){
 	printf("storeInode() called\n");
 	if(nd == NULL) return;
 	int offset = (2 * BLOCKSZ) + (nd->i_number * INUM);
+	printf("TILL HERE\n");
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, nd->path, sizeof(nd->path));
@@ -150,7 +151,6 @@ void storeInode(INODE *nd){
 	write(HDISK, &(nd->m_time), sizeof(nd->m_time));
 	write(HDISK, &(nd->b_time), sizeof(nd->b_time));
 	write(HDISK, &(nd->size), sizeof(nd->size));
-	printf("TILL HERE\n");
 	if(nd->datab != NULL)
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
 	closeDisk();
@@ -279,18 +279,18 @@ char * getDir(char * apath){
 }
 
 
-INODE * getNodeFromPath(char * apath, INODE *root){
+INODE * getNodeFromPath(char * apath, INODE *parent){
 	// printf("getNodeFromPath called with path %s\n", apath);
 	int i;
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
 	if((path[strlen(path)-1] == '/') && (strcmp("/", path) != 0)) path[strlen(path) - 1] = '\0';
 	INODE *retn;
-	if((path == NULL)||(root == NULL)||(strcmp(path, "") == 0)) return(NULL);	
-	if(strcmp(root->path, path) == 0) return(root);
+	if((path == NULL)||(parent == NULL)||(strcmp(path, "") == 0)) return(NULL);	
+	if(strcmp(parent->path, path) == 0) return(parent);
 	
-	for(i=0; i<root->num_children; i++){
-		retn = getNodeFromPath(path, (root->children)[i]);
+	for(i=0; i<parent->num_children; i++){
+		retn = getNodeFromPath(path, (parent->children)[i]);
 		if(retn != NULL)return(retn);
 	}
 	return(NULL);
@@ -336,7 +336,7 @@ int addNode(char * apath, char type){
 	parent->num_children += 1;
 	parent->children = (INODE **)realloc(parent->children, sizeof(INODE *) * parent->num_children);
 	parent->children[parent->num_children - 1] = initializeNode(apath, getName(&path), type, parent);
-	
+	storeInode(parent->children[parent->num_children - 1]);
 	
 	/* printf("Name of the node is %s\n", parent->children[parent->num_children - 1]->name); */
 	/* printf("Path of the node is %s\n", parent->children[parent->num_children - 1]->path); */
@@ -368,7 +368,7 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	time(&(ret->m_time));
 	time(&(ret->b_time));
 	ret->i_number = getInodeNumber();
-	printf("Inode number is %ld\n", ret->i_number);
+	// printf("Inode number is %ld\n", ret->i_number);
 	ret->parent = parent;
 	ret->children = NULL;
 	ret->data = NULL;
