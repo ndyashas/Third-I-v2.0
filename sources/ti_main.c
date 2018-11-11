@@ -16,80 +16,91 @@
 #define DNDISKSZ 128
 #define DPERN 10
 
-
 const int DISKSIZE = (2 * BLOCKSZ) + (MAXIN * INDISKSZ) + (MAXDN * DNDISKSZ);
 
 typedef struct INODE{
-    char path[50];                    // Path upto node
-    char name[20];                    // Name of the file / directory
-    char type;                      // Type : "directory" or "file"
-    mode_t permissions;		        // Permissions 
-    uid_t user_id;		            // userid
-    gid_t group_id;		            // groupid
-    int num_children;               // Number of children nodes
-    int num_files;		            // Number of files
-    time_t a_time;                  // Access time
-    time_t m_time;                  // Modified time
-    time_t b_time;                  // Creation time
-    off_t size;                     // Size of the node
-    unsigned long int i_number;     // Inode number of the node in disk    
-    struct INODE * parent;          // Pointer to parent node
-    long int children[30];       // Pointers to children nodes
-    char * data;                    // data stored in the directory
-	long int datab[DPERN];                     // Track of data blocks
+    char type;
+	off_t size;
+	char * data;
+	char path[50];
+    char name[20];
+	uid_t user_id;
+	int num_files;
+    time_t a_time;
+    time_t m_time;
+    time_t b_time;
+    gid_t group_id;
+	int num_children;
+    mode_t permissions;
+	struct INODE * parent;
+	long int children[30];
+	long int datab[DPERN];
+    unsigned long int i_number;
 }INODE;
 
 INODE *ROOT;
-unsigned long int IN = 0;
 int HDISK;
 char *IBMAP;
 char *DBMAP;
+unsigned long int IN = 0;
 
-const mode_t USR_NPF = S_IRUSR | S_IWUSR; 
-const mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
+const mode_t USR_NPF = S_IRUSR | S_IWUSR;
 const mode_t GRP_NPF = S_IRGRP | S_IWGRP;
+const mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
 const mode_t GRP_NPD = S_IRGRP | S_IWGRP | S_IFDIR;
 
-char * reverse(char *, int);
-char * getName(char **);
-char * getDir(char *);
-INODE * getNodeFromPath(char *, INODE *);
+
+void openDisk();
+void closeDisk();
 int delNode(char *);
+int getInodeNumber();
+int getDnodeNumber();
+void clearInode(int);
+void clearDnode(int);
+char * getDnode(int);
+INODE * getInode(int);
+char * getDir(char *);
+char * getName(char **);
+void storeInode(INODE *);
 int addNode(char *, char);
-
-
-INODE * initializeNode( char *, char *, char,  INODE *);
+char * reverse(char *, int);
+int storeDnode(char *, int);
+void returnDnodeNumber(int);
+void returnInodeNumber(int);
 void initializeTIFS(INODE **);
+INODE * getNodeFromPath(char *, INODE *);
+INODE * initializeNode(char *, char *, char, INODE *);
 
 
-int ti_getattr(const char *, struct stat *);
-int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_info *);
-int ti_mkdir(const char *, mode_t );
 int ti_rmdir(const char *);
-int ti_open(const char *, struct fuse_file_info *);
-int ti_mknod(const char *, mode_t, dev_t);
-int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info *);
-int ti_read(const char *, char *, size_t , off_t ,struct fuse_file_info *);
 int ti_unlink(const char *);
-int ti_chmod(const char *, mode_t );
-int ti_truncate(const char *, off_t );
 int ti_access(const char *, int);
+int ti_chmod(const char *, mode_t );
+int ti_mkdir(const char *, mode_t );
+int ti_truncate(const char *, off_t );
+int ti_mknod(const char *, mode_t, dev_t);
+int ti_getattr(const char *, struct stat *);
 int ti_utime(const char *, struct utimbuf *);
+int ti_open(const char *, struct fuse_file_info *);
+int ti_read(const char *, char *, size_t , off_t ,struct fuse_file_info *);
+int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info *);
+int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_info *);
+
 
 static struct fuse_operations operations = {
-	.getattr	= ti_getattr,
-	.readdir	= ti_readdir,
+	.open       = ti_open,
+	.read		= ti_read,
 	.mkdir      = ti_mkdir,
 	.rmdir      = ti_rmdir,
-	.open       = ti_open,
 	.mknod      = ti_mknod,
 	.write		= ti_write,
-	.read		= ti_read,
-    .unlink     = ti_unlink,
-	.chmod		= ti_chmod,
-	.truncate   = ti_truncate,
-	.access	    = ti_access,
 	.utime      = ti_utime,
+	.chmod		= ti_chmod,
+	.access	    = ti_access,
+	.unlink     = ti_unlink,
+	.getattr	= ti_getattr,
+	.readdir	= ti_readdir,
+	.truncate   = ti_truncate,
 };
 
 int main( int argc, char *argv[] ){
@@ -97,18 +108,10 @@ int main( int argc, char *argv[] ){
     return fuse_main(argc, argv, &operations);
 }
 
-
-void openDisk(){
-	HDISK = open("metaFiles/HDISK.meta", O_RDWR | O_CREAT , S_IRUSR | S_IWUSR);
-}
-
-void closeDisk(){
-	close(HDISK);
-}
-
+void openDisk(){HDISK = open("metaFiles/HDISK.meta", O_RDWR | O_CREAT , S_IRUSR | S_IWUSR);}
+void closeDisk(){close(HDISK);}
 
 int getInodeNumber(){
-	// printf("getInodeNumber called\n");
 	int ino;
 	openDisk();
 	lseek(HDISK, 0, SEEK_SET);
@@ -123,7 +126,6 @@ int getInodeNumber(){
 }
 
 void returnInodeNumber(int ino){
-	// printf("returnInodeNumber called\n");
 	openDisk();
 	lseek(HDISK, 0, SEEK_SET);
 	memset(IBMAP, '0', MAXIN);
@@ -136,7 +138,6 @@ void returnInodeNumber(int ino){
 
 int getDnodeNumber(){
 	int dno;
-	//memset(DBMAP, '0', MAXDN);
 	openDisk();
 	lseek(HDISK, MAXIN, SEEK_SET);
 	read(HDISK, DBMAP, MAXDN);
@@ -149,10 +150,8 @@ int getDnodeNumber(){
 }
 
 void returnDnodeNumber(int dno){
-	// printf("returnDnodeNumber called\n");
 	openDisk();
 	lseek(HDISK, MAXIN, SEEK_SET);
-	//memset(DBMAP, '0', DNDISKSZ);
 	read(HDISK, DBMAP, MAXDN);
 	DBMAP[dno] = '0';
 	lseek(HDISK, MAXIN, SEEK_SET);
@@ -187,7 +186,6 @@ int storeDnode(char *data, int dno){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	wlen = write(HDISK, data, wlen);
-	// printf("%d bytes written from %s\n", w, data);
 	closeDisk();
 	return(wlen);
 }
@@ -203,11 +201,9 @@ char * getDnode(int dno){
 }
 
 void storeInode(INODE *nd){
-	// printf("storeInode() called\n");
 	if(nd == NULL) return;
 	int offset = (MAXIN + MAXDN) + (nd->i_number * INDISKSZ);
 	off_t bw;
-	// printf("TILL HERE\n");
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, nd->path, sizeof(nd->path));
@@ -225,17 +221,7 @@ void storeInode(INODE *nd){
 	if(nd->type == 'f'){
 		if(nd->data == NULL) {nd->data = (char*)malloc(sizeof(char)); nd->data[0] = 0;}
 		int dno = 0, dsize = strlen(nd->data), i = 0, doff = 0, wlen;
-		/* for(i=0; i<DPERN; i++){ */
-		/* 	if(dsize > 0){ */
-		/* 		closeDisk(); */
-		/* 		returnDnodeNumber(nd->datab[i]); */
-		/* 		clearDnode(nd->datab[i]); */
-		/* 		dsize -= DNDISKSZ; */
-		/* 		openDisk(); */
-		/* 	} */
-		/* } */
 		nd->size = 0;
-		// printf("Data size of %s is %ld\n", nd->name, strlen(nd->data));
 		for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
 			closeDisk();
 			returnDnodeNumber(nd->datab[i]);
@@ -247,9 +233,6 @@ void storeInode(INODE *nd){
 			openDisk();
 		}
 		lseek(HDISK, bw, SEEK_SET);
-		printf("for %s file ", nd->name);
-		for(i=i; i>=0; i--) printf(" %ld --", nd->datab[i]);
-		printf("\n");
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
 	}
 	else
@@ -265,7 +248,6 @@ INODE * getInode(int ino){
 	openDisk();
 	
 	toret->i_number = ino;
-	// printf("Getting data for %d\n", ino);
 	int offset = (MAXIN + MAXDN) + (ino * INDISKSZ);
 	lseek(HDISK, offset, SEEK_SET);
 	read(HDISK, buff, sizeof(toret->path));
@@ -303,26 +285,23 @@ INODE * getInode(int ino){
 	free(buff);
 	closeDisk();
 	if(toret->type == 'f'){
-		int i;
 		toret->data = (char*)malloc(sizeof(char) * (toret->size + 1));
-		for(i=0; strlen(toret->data) < toret->size; i++){
+		for(int i=0; strlen(toret->data) < toret->size; i++){
 			strcat(toret->data, getDnode(toret->datab[i]));
 		}
 	}
-	// printf("Done getting data for %d\n", ino);
 	return(toret);
 }
 
 
 char * reverse(char * str, int mode){
-    int i;
     int len = strlen(str);
     char * retval = (char *)calloc(sizeof(char), (len + 1));
-    for(i = 0; i <= len/2; i++){
+    for(int i = 0; i <= len/2; i++){
         retval[i] = str[len - 1 -i];
         retval[len - i - 1] = str[i];
     }
-    if(retval[0] == '/' && mode == 1) {   // if mode is set to 1, then drop the leading '/'. Set to 0 for normal reversing.
+    if(retval[0] == '/' && mode == 1) {
         retval++;
     }
     return retval;
@@ -333,7 +312,7 @@ char * getName(char ** copy_path){
     int retlen = 0;
     char temp;
     char * tempstr;
-    *copy_path = reverse(*copy_path, 1);    // change "a/b/c" to "c/b/a" and extract content upto the first '/'
+    *copy_path = reverse(*copy_path, 1);
     temp = **(copy_path);
     while(temp != '/'){    
         tempstr = (char *)calloc(sizeof(char), (retlen + 2));
@@ -347,7 +326,7 @@ char * getName(char ** copy_path){
         free(tempstr);
     }
     if(strlen(*copy_path) > 1){
-        (*copy_path)++;                     // remove the leading '/' from "/b/a" after extracting 'c'
+        (*copy_path)++;
     }
     retval = (char *)realloc(retval, sizeof(char) * (retlen + 1));
     retval[retlen] = '\0';
@@ -360,7 +339,6 @@ char * getName(char ** copy_path){
 char * getDir(char * apath){
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
-	// printf("getDir() called with path %s\n", path);
 	if(path == NULL) return(NULL);
 	char *dirp = reverse((char*)path, 1);
 	while(dirp[0] != '/') dirp++;
@@ -386,7 +364,6 @@ INODE * getNodeFromPath(char * apath, INODE *parent){
 
 
 int delNode(char *apath){
-	// printf("delNode() called with path %s\n", apath);
 	int i, j, flag = 0, dsize, doff;
 	if(apath == NULL) return(0);
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
@@ -420,7 +397,6 @@ int delNode(char *apath){
 }
 
 int addNode(char * apath, char type){
-	// printf("addNode() called with path %s\n", apath);
 	if(apath == NULL) return(0);
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
@@ -464,7 +440,6 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 
 
 void initializeTIFS(INODE **rt){
-	// printf("Initializing TIFS\n");
 	IBMAP = (char*)malloc(sizeof(char)*(MAXIN));
 	DBMAP = (char*)malloc(sizeof(char)*(MAXDN));
 	if(access("metaFiles/HDISK.meta", F_OK ) != -1){}
@@ -486,7 +461,6 @@ void initializeTIFS(INODE **rt){
 
 
 int ti_getattr(const char *apath, struct stat *st){
-	// printf("ti_getattr() called with path %s\n", apath);
 	INODE *nd = getNodeFromPath((char *)apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
 	if(nd->type == 'd') st->st_nlink = 2;
@@ -517,7 +491,6 @@ int ti_getattr(const char *apath, struct stat *st){
 }
 
 int ti_readdir(const char *apath, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ){
-	// printf("ti_readdir() called with path %s\n", apath);
 	filler(buffer, ".", NULL, 0 ); 
 	filler(buffer, "..", NULL, 0 );
 	
@@ -532,33 +505,6 @@ int ti_readdir(const char *apath, void *buffer, fuse_fill_dir_t filler, off_t of
 }
 
 
-int ti_mkdir(const char * apath, mode_t x){
-	// printf("ti_mkdir() called with path %s\n", apath);
-	int retVal = addNode((char*) apath, 'd');
-	return(retVal);
-}
-
-
-int ti_rmdir(const char * apath){
-	// printf("ti_mkdir() called with path %s\n", apath);
-	int retVal = delNode((char *) apath);
-	return(retVal);
-}
-
-
-int ti_open(const char *apath, struct fuse_file_info *fi){
-	INODE * nd = getNodeFromPath((char *) apath, ROOT);
-	if(nd == NULL) return(-ENOENT);
-	return(0);
-}
-
-
-int ti_mknod(const char * apath, mode_t x, dev_t y){
-	// printf("ti_mknod() called with path %s\n", apath);
-	int retVal = addNode((char*) apath, 'f');
-	return(retVal);
-}
-
 int ti_write(const char *apath, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi){
 	if(apath == NULL) return(-ENOENT);
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
@@ -571,7 +517,6 @@ int ti_write(const char *apath, const char *buf, size_t size, off_t offset, stru
 	else
 		nd->data = (char *)realloc(nd->data, sizeof(char)*(nd->size));
 	memcpy(nd->data + offset, buf, size);
-	//nd->data[((nd->size)--) - 1] = '\0';
 	storeInode(nd);
 	return(size);
 }
@@ -587,13 +532,6 @@ int ti_read(const char *apath, char *buf, size_t size, off_t offset,struct fuse_
 	memcpy(buf, nd->data + offset, nd->size);
 	storeInode(nd);
 	return(size);
-}
-
-
-int ti_unlink(const char *apath){
-	// printf("ti_unlink() called with path %s\n", apath);
-	int retVal = delNode((char *) apath);
-	return(retVal);
 }
 
 
@@ -628,6 +566,37 @@ int ti_access(const char * apath, int mask){
 	if(grant)
 		return(0);
 	return(-EACCES);
+}
+
+
+int ti_mkdir(const char * apath, mode_t x){
+	int retVal = addNode((char*) apath, 'd');
+	return(retVal);
+}
+
+
+int ti_rmdir(const char * apath){
+	int retVal = delNode((char *) apath);
+	return(retVal);
+}
+
+
+int ti_unlink(const char *apath){
+	int retVal = delNode((char *) apath);
+	return(retVal);
+}
+
+
+int ti_open(const char *apath, struct fuse_file_info *fi){
+	INODE * nd = getNodeFromPath((char *) apath, ROOT);
+	if(nd == NULL) return(-ENOENT);
+	return(0);
+}
+
+
+int ti_mknod(const char * apath, mode_t x, dev_t y){
+	int retVal = addNode((char*) apath, 'f');
+	return(retVal);
 }
 
 
