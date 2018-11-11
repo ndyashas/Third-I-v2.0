@@ -19,23 +19,23 @@
 const int DISKSIZE = (2 * BLOCKSZ) + (MAXIN * INDISKSZ) + (MAXDN * DNDISKSZ);
 
 typedef struct INODE{
-    char type;
+	char type;
 	off_t size;
 	char * data;
 	char path[50];
-    char name[20];
+	char name[20];
 	uid_t user_id;
 	int num_files;
-    time_t a_time;
-    time_t m_time;
-    time_t b_time;
-    gid_t group_id;
+	time_t a_time;
+	time_t m_time;
+	time_t b_time;
+	gid_t group_id;
 	int num_children;
-    mode_t permissions;
+	mode_t permissions;
 	struct INODE * parent;
 	long int children[30];
 	long int datab[DPERN];
-    unsigned long int i_number;
+	unsigned long int i_number;
 }INODE;
 
 INODE *ROOT;
@@ -88,23 +88,23 @@ int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_
 
 
 static struct fuse_operations operations = {
-	.open       = ti_open,
-	.read		= ti_read,
-	.mkdir      = ti_mkdir,
-	.rmdir      = ti_rmdir,
-	.mknod      = ti_mknod,
-	.write		= ti_write,
-	.utime      = ti_utime,
-	.chmod		= ti_chmod,
-	.access	    = ti_access,
-	.unlink     = ti_unlink,
-	.getattr	= ti_getattr,
-	.readdir	= ti_readdir,
-	.truncate   = ti_truncate,
+    .open       = ti_open,
+    .read       = ti_read,
+    .mkdir      = ti_mkdir,
+    .rmdir      = ti_rmdir,
+    .mknod      = ti_mknod,
+    .write      = ti_write,
+    .utime      = ti_utime,
+    .chmod      = ti_chmod,
+    .access     = ti_access,
+    .unlink     = ti_unlink,
+    .getattr    = ti_getattr,
+    .readdir    = ti_readdir,
+    .truncate   = ti_truncate,
 };
 
 int main( int argc, char *argv[] ){
-	initializeTIFS(&ROOT);
+    initializeTIFS(&ROOT);
     return fuse_main(argc, argv, &operations);
 }
 
@@ -235,8 +235,7 @@ void storeInode(INODE *nd){
 		lseek(HDISK, bw, SEEK_SET);
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
 	}
-	else
-		write(HDISK, nd->children, sizeof(nd->children));
+	else write(HDISK, nd->children, sizeof(nd->children));
 	write(HDISK, &(nd->size), sizeof(nd->size));
 	closeDisk();
 }
@@ -286,9 +285,7 @@ INODE * getInode(int ino){
 	closeDisk();
 	if(toret->type == 'f'){
 		toret->data = (char*)malloc(sizeof(char) * (toret->size + 1));
-		for(int i=0; strlen(toret->data) < toret->size; i++){
-			strcat(toret->data, getDnode(toret->datab[i]));
-		}
+		for(int i=0; strlen(toret->data) < toret->size; i++) strcat(toret->data, getDnode(toret->datab[i]));
 	}
 	return(toret);
 }
@@ -301,9 +298,7 @@ char * reverse(char * str, int mode){
         retval[i] = str[len - 1 -i];
         retval[len - i - 1] = str[i];
     }
-    if(retval[0] == '/' && mode == 1) {
-        retval++;
-    }
+    if(retval[0] == '/' && mode == 1) retval++;
     return retval;
 }
 
@@ -325,9 +320,7 @@ char * getName(char ** copy_path){
         temp = **(copy_path);
         free(tempstr);
     }
-    if(strlen(*copy_path) > 1){
-        (*copy_path)++;
-    }
+    if(strlen(*copy_path) > 1) (*copy_path)++;
     retval = (char *)realloc(retval, sizeof(char) * (retlen + 1));
     retval[retlen] = '\0';
     retval = reverse(retval, 0);        
@@ -385,8 +378,7 @@ int delNode(char *apath){
 			flag = 1;
 		}
 		if(flag){
-			if(i != parent->num_children-1)
-				parent->children[i] = parent->children[i+1];
+			if(i != parent->num_children-1) parent->children[i] = parent->children[i+1];
 		}
 	}
 	parent->num_children -= 1;
@@ -498,9 +490,7 @@ int ti_readdir(const char *apath, void *buffer, fuse_fill_dir_t filler, off_t of
 	if(nd == NULL) return(-ENOENT);
 	
 	nd->a_time=time(NULL);
-	for(int i = 0; i < nd->num_children; i++){
-		filler( buffer, getInode(nd->children[i])->name, NULL, 0 );
-	}
+	for(int i = 0; i < nd->num_children; i++) filler( buffer, getInode(nd->children[i])->name, NULL, 0 );
 	return(0);
 }
 
@@ -512,10 +502,8 @@ int ti_write(const char *apath, const char *buf, size_t size, off_t offset, stru
 	nd->m_time = time(NULL);
 	nd->a_time = time(NULL);
 	nd->size = size + offset;
-	if(nd->data == NULL)
-		nd->data = (char *)malloc(sizeof(char)*(nd->size));
-	else
-		nd->data = (char *)realloc(nd->data, sizeof(char)*(nd->size));
+	if(nd->data == NULL) nd->data = (char *)malloc(sizeof(char)*(nd->size));
+	else nd->data = (char *)realloc(nd->data, sizeof(char)*(nd->size));
 	memcpy(nd->data + offset, buf, size);
 	storeInode(nd);
 	return(size);
@@ -563,27 +551,8 @@ int ti_truncate(const char *apath, off_t size){
 
 int ti_access(const char * apath, int mask){
 	int grant = 1;		
-	if(grant)
-		return(0);
+	if(grant) return(0);
 	return(-EACCES);
-}
-
-
-int ti_mkdir(const char * apath, mode_t x){
-	int retVal = addNode((char*) apath, 'd');
-	return(retVal);
-}
-
-
-int ti_rmdir(const char * apath){
-	int retVal = delNode((char *) apath);
-	return(retVal);
-}
-
-
-int ti_unlink(const char *apath){
-	int retVal = delNode((char *) apath);
-	return(retVal);
 }
 
 
@@ -594,12 +563,8 @@ int ti_open(const char *apath, struct fuse_file_info *fi){
 }
 
 
-int ti_mknod(const char * apath, mode_t x, dev_t y){
-	int retVal = addNode((char*) apath, 'f');
-	return(retVal);
-}
-
-
-int ti_utime(const char *apath, struct utimbuf *tv){
-	return 0;
-}
+int ti_mkdir(const char * apath, mode_t x){return(addNode((char*) apath, 'd'));}
+int ti_rmdir(const char * apath){return(delNode((char *) apath));}
+int ti_unlink(const char *apath){return(delNode((char *) apath));}
+int ti_mknod(const char * apath, mode_t x, dev_t y){return(addNode((char*) apath, 'f'));}
+int ti_utime(const char *apath, struct utimbuf *tv){return 0;}
