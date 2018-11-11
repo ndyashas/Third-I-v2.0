@@ -16,7 +16,7 @@
 
 const int DISKSIZE = (BLOCKSZ * (DNUM + 2));
 const int INODESIZE = 160 + (8*DPERN);
-const int IPERBLK = (int)(BLOCKSZ/INODESIZE);
+const int IPERBLK = BLOCKSZ/(160 + (8*DPERN));
 
 typedef struct INODE{
     char path[50];                    // Path upto node
@@ -38,10 +38,11 @@ typedef struct INODE{
 	long int datab[DPERN];                     // Track of data blocks
 }INODE;
 
-
 INODE *ROOT;
 unsigned long int IN = 0;
-int hdisk;
+int HDISK;
+char *IBMAP;
+char *DBMAP;
 
 const mode_t USR_NPF = S_IRUSR | S_IWUSR; 
 const mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
@@ -95,6 +96,29 @@ int main( int argc, char *argv[] ){
     return fuse_main(argc, argv, &operations);
 }
 
+
+void openDisk(){
+	HDISK = open("metaFiles/HDISK.meta", O_RDWR | O_CREAT , S_IRUSR | S_IWUSR);
+}
+
+void closeDisk(){
+	close(HDISK);
+}
+
+int getInodeNumber(){
+	printf("getInodeNumber called\n");
+	int ino;
+	openDisk();
+	lseek(HDISK, 0, SEEK_SET);
+	memset(IBMAP, '0', INUM);
+	read(HDISK, IBMAP, INUM);
+	for(ino=0; ino<INUM; ino++) if(IBMAP[ino] == '0') break;
+	IBMAP[ino] = '1';
+	lseek(HDISK, 0, SEEK_SET);
+	write(HDISK, IBMAP, INUM);
+	closeDisk();
+	return(ino);
+}
 
 char * reverse(char * str, int mode){
     int i;
@@ -237,7 +261,8 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	time(&(ret->a_time));
 	time(&(ret->m_time));
 	time(&(ret->b_time));
-	ret->i_number = IN++;
+	ret->i_number = getInodeNumber();
+	printf("Inode number is %d\n", ret->i_number);
 	ret->parent = parent;
 	ret->children = NULL;
 	ret->data = NULL;
@@ -246,44 +271,47 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 }
 
 
-void initializeDISK(){
-	hdisk = open("metaFiles/hdisk.meta", O_RDWR | O_CREAT , S_IRUSR | S_IWUSR);
-	char *buf = (char*)malloc(sizeof(char)*DISKSIZE);
-	memset(buf, 0, DISKSIZE);
-	write(hdisk, buf, DISKSIZE);
-	close(hdisk);
-}
-
-
 void initializeTIFS(INODE **rt){
 	printf("Initializing TIFS\n");
-	if(access("metaFiles/hdisk.meta", F_OK ) != -1){
+	IBMAP = (char*)malloc(sizeof(char)*(INUM));
+	DBMAP = (char*)malloc(sizeof(char)*(DNUM));
+	if(access("metaFiles/HDISK.meta", F_OK ) != -1){
 		printf("Loading data from disk ...\n");
 	}
 	
 	else{
 		printf("No old meta files found initializing new TIFS\n");
-		initializeDISK();
+		char *buf = (char*)malloc(sizeof(char)*DISKSIZE);
+		openDisk();
+		memset(buf, 0, DISKSIZE);
+		write(HDISK, buf, DISKSIZE);
+
+		memset(buf, '0', BLOCKSZ);
+		lseek(HDISK, 0, SEEK_SET);
+		write(HDISK, buf, BLOCKSZ);
+		write(HDISK, buf, BLOCKSZ);
+		closeDisk();
+
 		(*rt) = initializeNode( "/", "TIROOT", 'd',  (*rt));
 	}
 }
 
 
 int ti_getattr(const char *apath, struct stat *st){
-	// printf("ti_getattr() called with path %s\n", apath);
+	printf("ti_getattr() called with path %s\n", apath);
 	INODE *nd = getNodeFromPath((char *)apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
 	if(nd->type == 'd') st->st_nlink = 2;
 	else st->st_nlink = 1;
 	
-	/* printf("**********************\n"); */
-	/* printf("Inode number %ld\n", nd->i_number); */
-	/* printf("Name %s\n", nd->name); */
-	/* printf("Path %s\n", nd->path); */
-	/* printf("Number of children %d\n", nd->num_children); */
-	/* if(nd->type == 'f') */
-	/* 	printf("Data of file : %s\n", nd->data); */
-	/* printf("**********************\n"); */
+	printf("**********************\n");
+	printf("Inode number %ld\n", nd->i_number);
+	printf("Name %s\n", nd->name);
+	printf("Path %s\n", nd->path);
+	printf("Number of children %d\n", nd->num_children);
+	if(nd->type == 'f')
+		printf("Data of file : %s\n", nd->data);
+	printf("**********************\n");
 	
 	
 	st->st_ino = nd->i_number;
