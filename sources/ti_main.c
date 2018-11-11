@@ -13,8 +13,8 @@
 #define MAXIN 30
 #define MAXDN 300
 #define INDISKSZ 512
-#define DNDISKSZ 1024
-#define DPERN 25
+#define DNDISKSZ 512
+#define DPERN 10
 
 
 // Currently total disk size is 1.2 MB
@@ -119,7 +119,7 @@ int getInodeNumber(){
 	IBMAP[ino] = '1';
 	lseek(HDISK, 0, SEEK_SET);
 	write(HDISK, IBMAP, MAXIN);
-	//	closeDisk();
+	closeDisk();
 	return(ino);
 }
 
@@ -132,7 +132,7 @@ void returnInodeNumber(int ino){
 	IBMAP[ino] = '0';
 	lseek(HDISK, 0, SEEK_SET);
 	write(HDISK, IBMAP, MAXIN);
-	//	closeDisk();
+	closeDisk();
 }
 
 int getDnodeNumber(){
@@ -145,6 +145,7 @@ int getDnodeNumber(){
 	DBMAP[dno] = '1';
 	lseek(HDISK, MAXIN, SEEK_SET);
 	write(HDISK, DBMAP, MAXDN);
+	closeDisk();
 	return(dno);
 }
 
@@ -157,7 +158,7 @@ void returnDnodeNumber(int dno){
 	DBMAP[dno] = '0';
 	lseek(HDISK, MAXIN, SEEK_SET);
 	write(HDISK, DBMAP, MAXDN);
-	//	closeDisk();
+	closeDisk();
 }
 
 
@@ -168,7 +169,7 @@ void clearInode(int ino){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, buff, INDISKSZ);
-	//	closeDisk();
+	closeDisk();
 }
 
 void clearDnode(int dno){
@@ -178,7 +179,7 @@ void clearDnode(int dno){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, buff, DNDISKSZ);
-	//	closeDisk();
+	closeDisk();
 }
 
 void storeDnode(char *data, int dno){
@@ -187,7 +188,7 @@ void storeDnode(char *data, int dno){
 	lseek(HDISK, offset, SEEK_SET);
 	int w = write(HDISK, data, DNDISKSZ);
 	// printf("%d bytes written from %s\n", w, data);
-	// closeDisk();
+	closeDisk();
 }
 
 char * getDnode(int dno){
@@ -196,6 +197,7 @@ char * getDnode(int dno){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	read(HDISK, toret, DNDISKSZ);
+	closeDisk();
 	return(toret);
 }
 
@@ -224,18 +226,22 @@ void storeInode(INODE *nd){
 		int dno = 0, dsize = strlen(nd->data), i = 0, doff = 0;
 		for(i=0; i<DPERN; i++){
 			if(dsize > 0){
+				closeDisk();
 				returnDnodeNumber(nd->datab[i]);
 				clearDnode(nd->datab[i]);
 				dsize -= DNDISKSZ;
+				openDisk();
 			}
 		}
 		nd->size = 0;
 		printf("Data size of %s is %ld\n", nd->name, strlen(nd->data));
 		for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
+			closeDisk();
 			dno = getDnodeNumber();
 			storeDnode(nd->data + doff, dno);
 			nd->datab[i++] = dno;
 			nd->size += DNDISKSZ;
+			openDisk();
 		}
 		lseek(HDISK, bw, SEEK_SET);
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
@@ -289,6 +295,7 @@ INODE * getInode(int ino){
 	read(HDISK, buff, sizeof(toret->size));
 	toret->size = *((off_t *)buff);
 	free(buff);
+	closeDisk();
 	if(toret->type == 'f'){
 		int i;
 		toret->data = (char*)malloc(sizeof(char) * (toret->size + 1));
@@ -297,7 +304,6 @@ INODE * getInode(int ino){
 		}
 	}
 	// printf("Done getting data for %d\n", ino);
-	closeDisk();
 	return(toret);
 }
 
