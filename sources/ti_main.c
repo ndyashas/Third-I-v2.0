@@ -10,13 +10,15 @@
 #include <stdint.h>
 
 #define BLOCKSZ 4096
-#define INUM 512
-#define DNUM 4096
+#define MAXIN 30
+#define MAXDN 300
+#define INDISKSZ 512
+#define DNDISKSZ 4096
 #define DPERN 10
 
-const int DISKSIZE = (BLOCKSZ * (DNUM + 2));
-const int INODESIZE = 160 + (8*DPERN);
-const int IPERBLK = BLOCKSZ/(160 + (8*DPERN));
+
+// Currently total disk size is 1.2 MB
+const int DISKSIZE = (2 * BLOCKSZ) + (MAXIN * INDISKSZ) + (MAXDN * DNDISKSZ);
 
 typedef struct INODE{
     char path[50];                    // Path upto node
@@ -108,13 +110,13 @@ void closeDisk(){
 int getDnodeNumber(){
 	int dno;
 	openDisk();
-	lseek(HDISK, BLOCKSZ, SEEK_SET);
-	memset(DBMAP, '0', DNUM);
-	read(HDISK, DBMAP, DNUM);
-	for(dno=0; dno<DNUM; dno++) if(DBMAP[dno] == '0') break;
+	lseek(HDISK, MAXIN, SEEK_SET);
+	memset(DBMAP, '0', DNDISKSZ);
+	read(HDISK, DBMAP, DNDISKSZ);
+	for(dno=0; dno<DNDISKSZ; dno++) if(DBMAP[dno] == '0') break;
 	DBMAP[dno] = '1';
 	lseek(HDISK, BLOCKSZ, SEEK_SET);
-	write(HDISK, DBMAP, DNUM);
+	write(HDISK, DBMAP, DNDISKSZ);
 	closeDisk();
 	return(dno);
 }
@@ -122,33 +124,33 @@ int getDnodeNumber(){
 void returnDnodeNumber(int dno){
 	// printf("returnDnodeNumber called\n");
 	openDisk();
-	lseek(HDISK, BLOCKSZ, SEEK_SET);
-	memset(DBMAP, '0', DNUM);
-	read(HDISK, DBMAP, DNUM);
+	lseek(HDISK, MAXIN, SEEK_SET);
+	memset(DBMAP, '0', DNDISKSZ);
+	read(HDISK, DBMAP, DNDISKSZ);
 	IBMAP[dno] = '0';
 	lseek(HDISK, BLOCKSZ, SEEK_SET);
-	write(HDISK, DBMAP, DNUM);
+	write(HDISK, DBMAP, DNDISKSZ);
 	closeDisk();
 }
 
 
 void clearInode(int ino){
-	int offset = (2 * BLOCKSZ) + (ino * INUM);
-	char *buff = (char*)malloc(sizeof(char)*INUM);
-	memset(buff, 0, INUM);
+	int offset = (MAXIN + MAXDN) + (ino * INDISKSZ);
+	char *buff = (char*)malloc(sizeof(char)*INDISKSZ);
+	memset(buff, 0, INDISKSZ);
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
-	write(HDISK, buff, INUM);
+	write(HDISK, buff, INDISKSZ);
 	closeDisk();
 }
 
 void clearDnode(int dno){
-	int offset = (2 * BLOCKSZ) + (dno * DNUM);
-	char *buff = (char*)malloc(sizeof(char)*DNUM);
-	memset(buff, 0, DNUM);
+	int offset = (MAXIN + MAXDN) + (dno * DNDISKSZ);
+	char *buff = (char*)malloc(sizeof(char)*DNDISKSZ);
+	memset(buff, 0, DNDISKSZ);
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
-	write(HDISK, buff, DNUM);
+	write(HDISK, buff, DNDISKSZ);
 	closeDisk();
 }
 
@@ -157,14 +159,16 @@ void storeDnode(char *data){
 }
 
 char * getDnode(int dno){
-	char *toret = (char*)malloc(sizeof(char)*DNUM);
+	char *toret = (char*)malloc(sizeof(char)*DNDISKSZ);
+	openDisk();
+	closeDisk();
 	return(toret);
 }
 
 void storeInode(INODE *nd){
 	// printf("storeInode() called\n");
 	if(nd == NULL) return;
-	int offset = (2 * BLOCKSZ) + (nd->i_number * INUM);
+	int offset = (MAXIN + MAXDN) + (nd->i_number * INDISKSZ);
 	// printf("TILL HERE\n");
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
@@ -190,12 +194,12 @@ void storeInode(INODE *nd){
 
 INODE * getInode(int ino){
 	INODE *toret = (INODE *)malloc(sizeof(INODE));
-	char *buff = (char*)malloc(sizeof(char)*INUM);
+	char *buff = (char*)malloc(sizeof(char)*INDISKSZ);
 	openDisk();
 
 	toret->i_number = ino;
 	// printf("Getting data for %d\n", ino);
-	int offset = (2 * BLOCKSZ) + (ino * INUM);
+	int offset = (MAXIN + MAXDN) + (ino * INDISKSZ);
 	lseek(HDISK, offset, SEEK_SET);
 	read(HDISK, buff, sizeof(toret->path));
 	memcpy(toret->path, buff, sizeof(toret->path));
@@ -241,12 +245,12 @@ int getInodeNumber(){
 	int ino;
 	openDisk();
 	lseek(HDISK, 0, SEEK_SET);
-	memset(IBMAP, '0', INUM);
-	read(HDISK, IBMAP, INUM);
-	for(ino=0; ino<INUM; ino++) if(IBMAP[ino] == '0') break;
+	memset(IBMAP, '0', MAXIN);
+	read(HDISK, IBMAP, MAXIN);
+	for(ino=0; ino<MAXIN; ino++) if(IBMAP[ino] == '0') break;
 	IBMAP[ino] = '1';
 	lseek(HDISK, 0, SEEK_SET);
-	write(HDISK, IBMAP, INUM);
+	write(HDISK, IBMAP, MAXIN);
 	closeDisk();
 	return(ino);
 }
@@ -255,11 +259,11 @@ void returnInodeNumber(int ino){
 	// printf("returnInodeNumber called\n");
 	openDisk();
 	lseek(HDISK, 0, SEEK_SET);
-	memset(IBMAP, '0', INUM);
-	read(HDISK, IBMAP, INUM);
+	memset(IBMAP, '0', MAXIN);
+	read(HDISK, IBMAP, MAXIN);
 	IBMAP[ino] = '0';
 	lseek(HDISK, 0, SEEK_SET);
-	write(HDISK, IBMAP, INUM);
+	write(HDISK, IBMAP, MAXIN);
 	closeDisk();
 }
 
@@ -413,7 +417,7 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	ret->type = type;
 	if(type == 'd'){  
         ret->permissions = S_IFDIR | 0755;
-		ret->size = INODESIZE;
+		ret->size = INDISKSZ;
     }     
     else{
     	ret->permissions = S_IFREG | 0644;
@@ -438,8 +442,8 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 
 void initializeTIFS(INODE **rt){
 	// printf("Initializing TIFS\n");
-	IBMAP = (char*)malloc(sizeof(char)*(INUM));
-	DBMAP = (char*)malloc(sizeof(char)*(DNUM));
+	IBMAP = (char*)malloc(sizeof(char)*(MAXIN));
+	DBMAP = (char*)malloc(sizeof(char)*(MAXDN));
 	if(access("metaFiles/HDISK.meta", F_OK ) != -1){
 		// printf("Loading data from disk ...\n");
 		(*rt) = getInode(0);
@@ -452,10 +456,10 @@ void initializeTIFS(INODE **rt){
 		memset(buf, 0, DISKSIZE);
 		write(HDISK, buf, DISKSIZE);
 
-		memset(buf, '0', BLOCKSZ);
+		memset(buf, '0', DISKSIZE);
 		lseek(HDISK, 0, SEEK_SET);
-		write(HDISK, buf, BLOCKSZ);
-		write(HDISK, buf, BLOCKSZ);
+		write(HDISK, buf, MAXIN);
+		write(HDISK, buf, MAXDN);
 		closeDisk();
 		
 		(*rt) = initializeNode( "/", "TIROOT", 'd',  (*rt));
