@@ -13,11 +13,10 @@
 #define MAXIN 30
 #define MAXDN 300
 #define INDISKSZ 512
-#define DNDISKSZ 512
+#define DNDISKSZ 128
 #define DPERN 10
 
 
-// Currently total disk size is 1.2 MB
 const int DISKSIZE = (2 * BLOCKSZ) + (MAXIN * INDISKSZ) + (MAXDN * DNDISKSZ);
 
 typedef struct INODE{
@@ -182,13 +181,15 @@ void clearDnode(int dno){
 	closeDisk();
 }
 
-void storeDnode(char *data, int dno){
+int storeDnode(char *data, int dno){
 	int offset = (MAXIN + MAXDN) + (MAXIN * INDISKSZ) + (dno * DNDISKSZ);
+	int wlen = (strlen(data) > DNDISKSZ) ? DNDISKSZ : strlen(data);
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
-	int w = write(HDISK, data, DNDISKSZ);
+	wlen = write(HDISK, data, wlen);
 	// printf("%d bytes written from %s\n", w, data);
 	closeDisk();
+	return(wlen);
 }
 
 char * getDnode(int dno){
@@ -223,27 +224,32 @@ void storeInode(INODE *nd){
 	bw = lseek(HDISK, 0, SEEK_CUR);
 	if(nd->type == 'f'){
 		if(nd->data == NULL) {nd->data = (char*)malloc(sizeof(char)); nd->data[0] = 0;}
-		int dno = 0, dsize = strlen(nd->data), i = 0, doff = 0;
-		for(i=0; i<DPERN; i++){
-			if(dsize > 0){
-				closeDisk();
-				returnDnodeNumber(nd->datab[i]);
-				clearDnode(nd->datab[i]);
-				dsize -= DNDISKSZ;
-				openDisk();
-			}
-		}
+		int dno = 0, dsize = strlen(nd->data), i = 0, doff = 0, wlen;
+		/* for(i=0; i<DPERN; i++){ */
+		/* 	if(dsize > 0){ */
+		/* 		closeDisk(); */
+		/* 		returnDnodeNumber(nd->datab[i]); */
+		/* 		clearDnode(nd->datab[i]); */
+		/* 		dsize -= DNDISKSZ; */
+		/* 		openDisk(); */
+		/* 	} */
+		/* } */
 		nd->size = 0;
-		printf("Data size of %s is %ld\n", nd->name, strlen(nd->data));
+		// printf("Data size of %s is %ld\n", nd->name, strlen(nd->data));
 		for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
 			closeDisk();
+			returnDnodeNumber(nd->datab[i]);
+			clearDnode(nd->datab[i]);
 			dno = getDnodeNumber();
-			storeDnode(nd->data + doff, dno);
-			nd->datab[i++] = dno;
-			nd->size += DNDISKSZ;
+			wlen = storeDnode(nd->data + doff, dno);
+			nd->datab[i] = dno;
+			nd->size += wlen;
 			openDisk();
 		}
 		lseek(HDISK, bw, SEEK_SET);
+		printf("for %s file ", nd->name);
+		for(i=i; i>=0; i--) printf(" %ld --", nd->datab[i]);
+		printf("\n");
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
 	}
 	else
@@ -257,7 +263,7 @@ INODE * getInode(int ino){
 	INODE *toret = (INODE *)malloc(sizeof(INODE));
 	char *buff = (char*)malloc(sizeof(char)*INDISKSZ);
 	openDisk();
-
+	
 	toret->i_number = ino;
 	// printf("Getting data for %d\n", ino);
 	int offset = (MAXIN + MAXDN) + (ino * INDISKSZ);
@@ -299,7 +305,7 @@ INODE * getInode(int ino){
 	if(toret->type == 'f'){
 		int i;
 		toret->data = (char*)malloc(sizeof(char) * (toret->size + 1));
-		for(i=0; i<toret->size; i += DNDISKSZ){
+		for(i=0; strlen(toret->data) < toret->size; i++){
 			strcat(toret->data, getDnode(toret->datab[i]));
 		}
 	}
@@ -363,30 +369,25 @@ char * getDir(char * apath){
 
 
 INODE * getNodeFromPath(char * apath, INODE *parent){
-	// printf("getNodeFromPath called with path %s\n", apath);
 	int i;
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
 	if((path[strlen(path)-1] == '/') && (strcmp("/", path) != 0)) path[strlen(path) - 1] = '\0';
 	INODE *retn;
 	if((path == NULL)||(parent == NULL)||(strcmp(path, "") == 0)) return(NULL);
-	// printf("comparing %s with %s\n", parent->path, path);
 	if(strcmp(parent->path, path) == 0) return(parent);
-	// printf("Comparision failed\n");
 	
 	for(i=0; i<parent->num_children; i++){
-		// printf("Searching with child %d\n", i);
 		retn = getNodeFromPath(path, getInode((parent->children)[i]));
-		if(retn != NULL){/*printf("GOT NODE\n");*/return(retn);}
+		if(retn != NULL) return(retn);
 	}
-	// printf("NODE NOT FOUND\n");
 	return(NULL);
 }
 
 
 int delNode(char *apath){
 	// printf("delNode() called with path %s\n", apath);
-	int i, flag = 0;
+	int i, j, flag = 0, dsize, doff;
 	if(apath == NULL) return(0);
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
@@ -396,10 +397,14 @@ int delNode(char *apath){
 		INODE *child = getInode(parent->children[i]);
 		if(strcmp(child->path, path) == 0){
 			if((child->type == 'd') && (child->num_children != 0)) return(-ENOTEMPTY);
+			if((child->type == 'f') && (child->data != NULL)){
+				for(dsize = strlen(child->data), doff=0, j=0; dsize>0; dsize -= DNDISKSZ, doff += DNDISKSZ, j++){
+					returnDnodeNumber(child->datab[j]);
+					clearDnode(child->datab[j]);
+				}
+			}
 			returnInodeNumber(child->i_number);
 			clearInode(child->i_number);
-			// free(child);
-			// parent->children[i] = (INODE *)malloc(sizeof(INODE));
 			flag = 1;
 		}
 		if(flag){
@@ -410,12 +415,6 @@ int delNode(char *apath){
 	parent->num_children -= 1;
 	storeInode(parent);
 	storeInode(ROOT);
-	/* printf("INode number of parent %ld\n", parent->i_number); */
-	/* printf("Path of parent %s\n", parent->path); */
-	/* printf("Name of parent %s\n", parent->name); */
-	/* printf("Number of children to parent %d\n", parent->num_children); */
-	/* for(i=0; i<parent->num_children;i++) printf(" %d --", parent->children[i]); */
-	/* printf("\n"); */
 	free(path);
 	return(0);
 }
@@ -427,34 +426,19 @@ int addNode(char * apath, char type){
 	strcpy(path, apath);
 	INODE *parent = getNodeFromPath(getDir(path), ROOT);
 	if(parent == NULL) return(0);
-	/*if(parent->children == NULL){
-		parent->num_children = 0;
-		parent->children = (INODE **)malloc(sizeof(INODE*));
-		}*/
 	parent->num_children += 1;
-	// parent->children = (INODE **)realloc(parent->children, sizeof(INODE *) * parent->num_children);
-	// parent->children[parent->num_children - 1] = initializeNode(apath, getName(&path), type, parent);
 	INODE *child = initializeNode(apath, getName(&path), type, parent);
 	parent->children[parent->num_children - 1] = child->i_number;
 	storeInode(parent);
 	storeInode(child);
 	storeInode(ROOT);
-	/* printf("Name of the node is %s\n", getInode(parent->children[parent->num_children - 1])->name); */
-	/* printf("Path of the node is %s\n", getInode(parent->children[parent->num_children - 1])->path); */
-	/* printf("Inode of the node is %ld\n", getInode(parent->children[parent->num_children - 1])->i_number); */
-	/* printf("Name of parent is %s\n", parent->name); */
-	/* printf("Path of parent is %s\n", parent->path); */
-	/* printf("Inode of parent is %ld\n", parent->i_number); */
-	/* printf("Number of children to parent %d\n", parent->num_children);	 */
 	return(0);
 }
 
 
 INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	INODE *ret = (INODE*)malloc(sizeof(INODE));
-	//ret->path = (char*)malloc(sizeof(char)*strlen(path));
 	strcpy(ret->path, path);
-	//ret->name = (char*)malloc(sizeof(char)*strlen(name));
 	strcpy(ret->name, name);
 	ret->type = type;
 	if(type == 'd'){  
@@ -473,11 +457,8 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	time(&(ret->m_time));
 	time(&(ret->b_time));
 	ret->i_number = getInodeNumber();
-	// printf("Inode number is %ld\n", ret->i_number);
 	ret->parent = parent;
-	// ret->children = NULL;
 	ret->data = NULL;
-	//ret->datab = NULL;
 	return(ret);
 }
 
@@ -486,17 +467,10 @@ void initializeTIFS(INODE **rt){
 	// printf("Initializing TIFS\n");
 	IBMAP = (char*)malloc(sizeof(char)*(MAXIN));
 	DBMAP = (char*)malloc(sizeof(char)*(MAXDN));
-	if(access("metaFiles/HDISK.meta", F_OK ) != -1){
-		// printf("Loading data from disk ...\n");
-	}
-	
+	if(access("metaFiles/HDISK.meta", F_OK ) != -1){}
 	else{
-		// printf("No old meta files found initializing new TIFS\n");
 		char *buf = (char*)malloc(sizeof(char)*DISKSIZE);
 		openDisk();
-		memset(buf, 0, DISKSIZE);
-		write(HDISK, buf, DISKSIZE);
-
 		memset(buf, '0', DISKSIZE);
 		lseek(HDISK, 0, SEEK_SET);
 		write(HDISK, buf, MAXIN);
@@ -505,6 +479,7 @@ void initializeTIFS(INODE **rt){
 		
 		(*rt) = initializeNode( "/", "TIROOT", 'd',  (*rt));
 		storeInode((*rt));
+		free(buf);
 	}
 	(*rt) = getInode(0);
 }
@@ -654,6 +629,7 @@ int ti_access(const char * apath, int mask){
 		return(0);
 	return(-EACCES);
 }
+
 
 int ti_utime(const char *apath, struct utimbuf *tv){
 	return 0;
