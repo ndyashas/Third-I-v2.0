@@ -142,6 +142,25 @@ void clearInode(int ino){
 	closeDisk();
 }
 
+void clearDnode(int dno){
+	int offset = (2 * BLOCKSZ) + (dno * DNUM);
+	char *buff = (char*)malloc(sizeof(char)*DNUM);
+	memset(buff, 0, DNUM);
+	openDisk();
+	lseek(HDISK, offset, SEEK_SET);
+	write(HDISK, buff, DNUM);
+	closeDisk();
+}
+
+void storeDnode(char *data){
+
+}
+
+char * getDnode(int dno){
+	char *toret = (char*)malloc(sizeof(char)*DNUM);
+	return(toret);
+}
+
 void storeInode(INODE *nd){
 	// printf("storeInode() called\n");
 	if(nd == NULL) return;
@@ -210,7 +229,7 @@ INODE * getInode(int ino){
 		read(HDISK, buff, sizeof(toret->children));
 		memcpy(toret->children, buff, sizeof(toret->children));
 	}
-	// free(buff);
+	free(buff);
 	// printf("Done getting data for %d\n", ino);
 	closeDisk();
 	return(toret);
@@ -341,7 +360,6 @@ int delNode(char *apath){
 		if(flag){
 			if(i != parent->num_children-1)
 				parent->children[i] = parent->children[i+1];
-			break;
 		}
 	}
 	parent->num_children -= 1;
