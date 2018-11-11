@@ -151,7 +151,7 @@ void storeInode(INODE *nd){
 	write(HDISK, &(nd->m_time), sizeof(nd->m_time));
 	write(HDISK, &(nd->b_time), sizeof(nd->b_time));
 	write(HDISK, &(nd->size), sizeof(nd->size));
-	if(nd->datab != NULL)
+	if(nd->type == 'f')
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
 	closeDisk();
 }
@@ -161,6 +161,9 @@ INODE * getInode(int ino){
 	INODE *toret = (INODE *)malloc(sizeof(INODE));
 	char *buff = (char*)malloc(sizeof(char)*INUM);
 	openDisk();
+
+	toret->i_number = ino;
+	printf("Getting data for %d\n", ino);
 	int offset = (2 * BLOCKSZ) + (ino * INUM);
 	lseek(HDISK, offset, SEEK_SET);
 	read(HDISK, buff, sizeof(toret->path));
@@ -187,12 +190,12 @@ INODE * getInode(int ino){
 	toret->b_time = *((time_t *)buff);
 	read(HDISK, buff, sizeof(toret->size));
 	toret->size = *((off_t *)buff);
-	read(HDISK, buff, sizeof(toret->i_number));
-	toret->i_number = *((unsigned long int *)buff);
 	if(toret->type == 'f'){
 		read(HDISK, buff, sizeof(toret->datab));
 		memcpy(toret->datab, buff, sizeof(toret->datab));
 	}
+	// free(buff);
+	printf("Done getting data for %d\n", ino);
 	closeDisk();
 	return(toret);
 }
@@ -286,13 +289,17 @@ INODE * getNodeFromPath(char * apath, INODE *parent){
 	strcpy(path, apath);
 	if((path[strlen(path)-1] == '/') && (strcmp("/", path) != 0)) path[strlen(path) - 1] = '\0';
 	INODE *retn;
-	if((path == NULL)||(parent == NULL)||(strcmp(path, "") == 0)) return(NULL);	
+	if((path == NULL)||(parent == NULL)||(strcmp(path, "") == 0)) return(NULL);
+	printf("comparing %s with %s\n", parent->path, path);
 	if(strcmp(parent->path, path) == 0) return(parent);
+	printf("Comparision failed\n");
 	
 	for(i=0; i<parent->num_children; i++){
+		printf("Searching with child %d\n", i);
 		retn = getNodeFromPath(path, (parent->children)[i]);
-		if(retn != NULL)return(retn);
+		if(retn != NULL){printf("GOT NODE\n");return(getInode(retn->i_number));}
 	}
+	printf("NODE NOT FOUND\n");
 	return(NULL);
 }
 
@@ -336,11 +343,16 @@ int addNode(char * apath, char type){
 	parent->num_children += 1;
 	parent->children = (INODE **)realloc(parent->children, sizeof(INODE *) * parent->num_children);
 	parent->children[parent->num_children - 1] = initializeNode(apath, getName(&path), type, parent);
+	storeInode(parent);
 	storeInode(parent->children[parent->num_children - 1]);
 	
-	/* printf("Name of the node is %s\n", parent->children[parent->num_children - 1]->name); */
-	/* printf("Path of the node is %s\n", parent->children[parent->num_children - 1]->path); */
-	/* printf("Inode of the node is %d\n", parent->children[parent->num_children - 1]->i_number); */
+	printf("Name of the node is %s\n", parent->children[parent->num_children - 1]->name);
+	printf("Path of the node is %s\n", parent->children[parent->num_children - 1]->path);
+	printf("Inode of the node is %d\n", parent->children[parent->num_children - 1]->i_number);
+	printf("Name of parent is %s\n", parent->name);
+	printf("Path of parent is %s\n", parent->path);
+	printf("Inode of parent is %d\n", parent->i_number);
+	printf("Number of children to parent %d\n", parent->num_children);	
 	return(0);
 }
 
