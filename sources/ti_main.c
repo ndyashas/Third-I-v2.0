@@ -132,11 +132,21 @@ void returnDnodeNumber(int dno){
 }
 
 
+void clearInode(int ino){
+	int offset = (2 * BLOCKSZ) + (ino * INUM);
+	char *buff = (char*)malloc(sizeof(char)*INUM);
+	memset(buff, 0, INUM);
+	openDisk();
+	lseek(HDISK, offset, SEEK_SET);
+	write(HDISK, buff, INUM);
+	closeDisk();
+}
+
 void storeInode(INODE *nd){
-	printf("storeInode() called\n");
+	// printf("storeInode() called\n");
 	if(nd == NULL) return;
 	int offset = (2 * BLOCKSZ) + (nd->i_number * INUM);
-	printf("TILL HERE\n");
+	// printf("TILL HERE\n");
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, nd->path, sizeof(nd->path));
@@ -165,7 +175,7 @@ INODE * getInode(int ino){
 	openDisk();
 
 	toret->i_number = ino;
-	printf("Getting data for %d\n", ino);
+	// printf("Getting data for %d\n", ino);
 	int offset = (2 * BLOCKSZ) + (ino * INUM);
 	lseek(HDISK, offset, SEEK_SET);
 	read(HDISK, buff, sizeof(toret->path));
@@ -201,7 +211,7 @@ INODE * getInode(int ino){
 		memcpy(toret->children, buff, sizeof(toret->children));
 	}
 	// free(buff);
-	printf("Done getting data for %d\n", ino);
+	// printf("Done getting data for %d\n", ino);
 	closeDisk();
 	return(toret);
 }
@@ -296,21 +306,22 @@ INODE * getNodeFromPath(char * apath, INODE *parent){
 	if((path[strlen(path)-1] == '/') && (strcmp("/", path) != 0)) path[strlen(path) - 1] = '\0';
 	INODE *retn;
 	if((path == NULL)||(parent == NULL)||(strcmp(path, "") == 0)) return(NULL);
-	printf("comparing %s with %s\n", parent->path, path);
+	// printf("comparing %s with %s\n", parent->path, path);
 	if(strcmp(parent->path, path) == 0) return(parent);
-	printf("Comparision failed\n");
+	// printf("Comparision failed\n");
 	
 	for(i=0; i<parent->num_children; i++){
-		printf("Searching with child %d\n", i);
+		// printf("Searching with child %d\n", i);
 		retn = getNodeFromPath(path, getInode((parent->children)[i]));
-		if(retn != NULL){printf("GOT NODE\n");return(retn);}
+		if(retn != NULL){/*printf("GOT NODE\n");*/return(retn);}
 	}
-	printf("NODE NOT FOUND\n");
+	// printf("NODE NOT FOUND\n");
 	return(NULL);
 }
 
 
 int delNode(char *apath){
+	// printf("delNode() called with path %s\n", apath);
 	int i, flag = 0;
 	if(apath == NULL) return(0);
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
@@ -322,6 +333,7 @@ int delNode(char *apath){
 		if(strcmp(child->path, path) == 0){
 			if((child->type == 'd') && (child->num_children != 0)) return(-ENOTEMPTY);
 			returnInodeNumber(child->i_number);
+			clearInode(child->i_number);
 			// free(child);
 			// parent->children[i] = (INODE *)malloc(sizeof(INODE));
 			flag = 1;
@@ -329,9 +341,17 @@ int delNode(char *apath){
 		if(flag){
 			if(i != parent->num_children-1)
 				parent->children[i] = parent->children[i+1];
+			break;
 		}
 	}
 	parent->num_children -= 1;
+	storeInode(parent);
+	/* printf("INode number of parent %ld\n", parent->i_number); */
+	/* printf("Path of parent %s\n", parent->path); */
+	/* printf("Name of parent %s\n", parent->name); */
+	/* printf("Number of children to parent %d\n", parent->num_children); */
+	/* for(i=0; i<parent->num_children;i++) printf(" %d --", parent->children[i]); */
+	/* printf("\n"); */
 	free(path);
 	return(0);
 }
@@ -355,13 +375,13 @@ int addNode(char * apath, char type){
 	storeInode(parent);
 	storeInode(child);
 	
-	printf("Name of the node is %s\n", getInode(parent->children[parent->num_children - 1])->name);
-	printf("Path of the node is %s\n", getInode(parent->children[parent->num_children - 1])->path);
-	printf("Inode of the node is %ld\n", getInode(parent->children[parent->num_children - 1])->i_number);
-	printf("Name of parent is %s\n", parent->name);
-	printf("Path of parent is %s\n", parent->path);
-	printf("Inode of parent is %ld\n", parent->i_number);
-	printf("Number of children to parent %d\n", parent->num_children);	
+	/* printf("Name of the node is %s\n", getInode(parent->children[parent->num_children - 1])->name); */
+	/* printf("Path of the node is %s\n", getInode(parent->children[parent->num_children - 1])->path); */
+	/* printf("Inode of the node is %ld\n", getInode(parent->children[parent->num_children - 1])->i_number); */
+	/* printf("Name of parent is %s\n", parent->name); */
+	/* printf("Path of parent is %s\n", parent->path); */
+	/* printf("Inode of parent is %ld\n", parent->i_number); */
+	/* printf("Number of children to parent %d\n", parent->num_children);	 */
 	return(0);
 }
 
@@ -399,16 +419,16 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 
 
 void initializeTIFS(INODE **rt){
-	printf("Initializing TIFS\n");
+	// printf("Initializing TIFS\n");
 	IBMAP = (char*)malloc(sizeof(char)*(INUM));
 	DBMAP = (char*)malloc(sizeof(char)*(DNUM));
 	if(access("metaFiles/HDISK.meta", F_OK ) != -1){
-		printf("Loading data from disk ...\n");
+		// printf("Loading data from disk ...\n");
 		(*rt) = getInode(0);
 	}
 	
 	else{
-		printf("No old meta files found initializing new TIFS\n");
+		// printf("No old meta files found initializing new TIFS\n");
 		char *buf = (char*)malloc(sizeof(char)*DISKSIZE);
 		openDisk();
 		memset(buf, 0, DISKSIZE);
@@ -428,22 +448,22 @@ void initializeTIFS(INODE **rt){
 
 
 int ti_getattr(const char *apath, struct stat *st){
-	printf("ti_getattr() called with path %s\n", apath);
+	// printf("ti_getattr() called with path %s\n", apath);
 	INODE *nd = getNodeFromPath((char *)apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
 	if(nd->type == 'd') st->st_nlink = 2;
 	else st->st_nlink = 1;
 	
-	printf("**********************\n");
-	printf("Inode number %ld\n", nd->i_number);
-	printf("Name %s\n", nd->name);
-	printf("Path %s\n", nd->path);
-	printf("Number of children %d\n", nd->num_children);
-	if(nd->type == 'f')
-		printf("Data of file : %s", nd->data);
-	else
-		for(int i=0; i<nd->num_children; i++) printf(" %ld --", nd->children[i]);
-	printf("\n**********************\n");
+	/* printf("**********************\n"); */
+	/* printf("Inode number %ld\n", nd->i_number); */
+	/* printf("Name %s\n", nd->name); */
+	/* printf("Path %s\n", nd->path); */
+	/* printf("Number of children %d\n", nd->num_children); */
+	/* if(nd->type == 'f') */
+	/* 	printf("Data of file : %s", nd->data); */
+	/* else */
+	/* 	for(int i=0; i<nd->num_children; i++) printf(" %ld --", nd->children[i]); */
+	/* printf("\n**********************\n"); */
 	
 	
 	st->st_ino = nd->i_number;
