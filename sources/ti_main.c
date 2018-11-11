@@ -33,7 +33,7 @@ typedef struct INODE{
     off_t size;                     // Size of the node
     unsigned long int i_number;     // Inode number of the node in disk    
     struct INODE * parent;          // Pointer to parent node
-    struct INODE ** children;       // Pointers to children nodes
+    long int children[30];       // Pointers to children nodes
     char * data;                    // data stored in the directory
 	long int datab[DPERN];                     // Track of data blocks
 }INODE;
@@ -153,6 +153,8 @@ void storeInode(INODE *nd){
 	write(HDISK, &(nd->size), sizeof(nd->size));
 	if(nd->type == 'f')
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
+	else
+		write(HDISK, nd->children, sizeof(nd->children));
 	closeDisk();
 }
 
@@ -193,6 +195,10 @@ INODE * getInode(int ino){
 	if(toret->type == 'f'){
 		read(HDISK, buff, sizeof(toret->datab));
 		memcpy(toret->datab, buff, sizeof(toret->datab));
+	}
+	else{
+		read(HDISK, buff, sizeof(toret->children));
+		memcpy(toret->children, buff, sizeof(toret->children));
 	}
 	// free(buff);
 	printf("Done getting data for %d\n", ino);
@@ -296,8 +302,8 @@ INODE * getNodeFromPath(char * apath, INODE *parent){
 	
 	for(i=0; i<parent->num_children; i++){
 		printf("Searching with child %d\n", i);
-		retn = getNodeFromPath(path, (parent->children)[i]);
-		if(retn != NULL){printf("GOT NODE\n");return(getInode(retn->i_number));}
+		retn = getNodeFromPath(path, getInode((parent->children)[i]));
+		if(retn != NULL){printf("GOT NODE\n");return(retn);}
 	}
 	printf("NODE NOT FOUND\n");
 	return(NULL);
@@ -312,11 +318,12 @@ int delNode(char *apath){
 	INODE *parent = getNodeFromPath(getDir(path), ROOT);
 	if(parent == NULL) return(0);
 	for(i=0; i<parent->num_children; i++){
-		if(strcmp((parent->children[i])->path, path) == 0){
-			if((parent->children[i]->type == 'd') && ((parent->children[i])->num_children != 0)) return(-ENOTEMPTY);
-			returnInodeNumber(parent->children[i]->i_number);
-			free(parent->children[i]);
-			parent->children[i] = (INODE *)malloc(sizeof(INODE));
+		INODE *child = getInode(parent->children[i]);
+		if(strcmp(child->path, path) == 0){
+			if((child->type == 'd') && (child->num_children != 0)) return(-ENOTEMPTY);
+			returnInodeNumber(child->i_number);
+			// free(child);
+			// parent->children[i] = (INODE *)malloc(sizeof(INODE));
 			flag = 1;
 		}
 		if(flag){
@@ -336,22 +343,24 @@ int addNode(char * apath, char type){
 	strcpy(path, apath);
 	INODE *parent = getNodeFromPath(getDir(path), ROOT);
 	if(parent == NULL) return(0);
-	if(parent->children == NULL){
+	/*if(parent->children == NULL){
 		parent->num_children = 0;
 		parent->children = (INODE **)malloc(sizeof(INODE*));
-	}
+		}*/
 	parent->num_children += 1;
-	parent->children = (INODE **)realloc(parent->children, sizeof(INODE *) * parent->num_children);
-	parent->children[parent->num_children - 1] = initializeNode(apath, getName(&path), type, parent);
+	// parent->children = (INODE **)realloc(parent->children, sizeof(INODE *) * parent->num_children);
+	// parent->children[parent->num_children - 1] = initializeNode(apath, getName(&path), type, parent);
+	INODE *child = initializeNode(apath, getName(&path), type, parent);
+	parent->children[parent->num_children - 1] = child->i_number;
 	storeInode(parent);
-	storeInode(parent->children[parent->num_children - 1]);
+	storeInode(child);
 	
-	printf("Name of the node is %s\n", parent->children[parent->num_children - 1]->name);
-	printf("Path of the node is %s\n", parent->children[parent->num_children - 1]->path);
-	printf("Inode of the node is %d\n", parent->children[parent->num_children - 1]->i_number);
+	printf("Name of the node is %s\n", getInode(parent->children[parent->num_children - 1])->name);
+	printf("Path of the node is %s\n", getInode(parent->children[parent->num_children - 1])->path);
+	printf("Inode of the node is %ld\n", getInode(parent->children[parent->num_children - 1])->i_number);
 	printf("Name of parent is %s\n", parent->name);
 	printf("Path of parent is %s\n", parent->path);
-	printf("Inode of parent is %d\n", parent->i_number);
+	printf("Inode of parent is %ld\n", parent->i_number);
 	printf("Number of children to parent %d\n", parent->num_children);	
 	return(0);
 }
@@ -382,7 +391,7 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	ret->i_number = getInodeNumber();
 	// printf("Inode number is %ld\n", ret->i_number);
 	ret->parent = parent;
-	ret->children = NULL;
+	// ret->children = NULL;
 	ret->data = NULL;
 	//ret->datab = NULL;
 	return(ret);
@@ -431,8 +440,10 @@ int ti_getattr(const char *apath, struct stat *st){
 	printf("Path %s\n", nd->path);
 	printf("Number of children %d\n", nd->num_children);
 	if(nd->type == 'f')
-		printf("Data of file : %s\n", nd->data);
-	printf("**********************\n");
+		printf("Data of file : %s", nd->data);
+	else
+		for(int i=0; i<nd->num_children; i++) printf(" %ld --", nd->children[i]);
+	printf("\n**********************\n");
 	
 	
 	st->st_ino = nd->i_number;
@@ -457,7 +468,7 @@ int ti_readdir(const char *apath, void *buffer, fuse_fill_dir_t filler, off_t of
 	
 	nd->a_time=time(NULL);
 	for(int i = 0; i < nd->num_children; i++){
-		filler( buffer, nd->children[i]->name, NULL, 0 );
+		filler( buffer, getInode(nd->children[i])->name, NULL, 0 );
 	}
 	return(0);
 }
