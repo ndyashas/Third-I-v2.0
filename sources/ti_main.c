@@ -13,8 +13,8 @@
 #define MAXIN 30
 #define MAXDN 300
 #define INDISKSZ 512
-#define DNDISKSZ 4096
-#define DPERN 10
+#define DNDISKSZ 1024
+#define DPERN 25
 
 
 // Currently total disk size is 1.2 MB
@@ -186,8 +186,8 @@ void storeDnode(char *data, int dno){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	int w = write(HDISK, data, DNDISKSZ);
-	printf("%d bytes written from %s\n", w, data);
-	//	closeDisk();
+	// printf("%d bytes written from %s\n", w, data);
+	// closeDisk();
 }
 
 char * getDnode(int dno){
