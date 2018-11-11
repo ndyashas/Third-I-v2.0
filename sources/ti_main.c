@@ -9,11 +9,19 @@
 #include <errno.h>
 #include <stdint.h>
 
+#define BLOCKSZ 4096
+#define INUM 50
+#define DNUM 4096
+#define DPERN 10
+
+const int DISKSIZE = (BLOCKSZ * (DNUM + 2));
+const int INODESIZE = 160 + (8*DPERN);
+const int IPERBLK = (int)(BLOCKSZ/INODESIZE);
 
 typedef struct INODE{
-    char * path;                    // Path upto node
-    char * name;                    // Name of the file / directory
-    char type;                    // Type : "directory" or "file"
+    char path[50];                    // Path upto node
+    char name[20];                    // Name of the file / directory
+    char type;                      // Type : "directory" or "file"
     mode_t permissions;		        // Permissions 
     uid_t user_id;		            // userid
     gid_t group_id;		            // groupid
@@ -26,18 +34,19 @@ typedef struct INODE{
     unsigned long int i_number;     // Inode number of the node in disk    
     struct INODE * parent;          // Pointer to parent node
     struct INODE ** children;       // Pointers to children nodes
-    char * data;          // data stored in the directory
+    char * data;                    // data stored in the directory
+	long int datab[DPERN];                     // Track of data blocks
 }INODE;
 
 
 INODE *ROOT;
-unsigned long int IN = 1;
-int BLOCKSZ = 4096;
+unsigned long int IN = 0;
+int hdisk;
 
-mode_t USR_NPF = S_IRUSR | S_IWUSR; 
-mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
-mode_t GRP_NPF = S_IRGRP | S_IWGRP;
-mode_t GRP_NPD = S_IRGRP | S_IWGRP | S_IFDIR;
+const mode_t USR_NPF = S_IRUSR | S_IWUSR; 
+const mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
+const mode_t GRP_NPF = S_IRGRP | S_IWGRP;
+const mode_t GRP_NPD = S_IRGRP | S_IWGRP | S_IFDIR;
 
 char * reverse(char *, int);
 char * getName(char **);
@@ -208,14 +217,14 @@ int addNode(char * apath, char type){
 
 INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	INODE *ret = (INODE*)malloc(sizeof(INODE));
-	ret->path = (char*)malloc(sizeof(char)*strlen(path));
+	//ret->path = (char*)malloc(sizeof(char)*strlen(path));
 	strcpy(ret->path, path);
-	ret->name = (char*)malloc(sizeof(char)*strlen(name));
+	//ret->name = (char*)malloc(sizeof(char)*strlen(name));
 	strcpy(ret->name, name);
 	ret->type = type;
 	if(type == 'd'){  
         ret->permissions = S_IFDIR | 0755;
-		ret->size = BLOCKSZ;
+		ret->size = INODESIZE;
     }     
     else{
     	ret->permissions = S_IFREG | 0644;
@@ -232,17 +241,29 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	ret->parent = parent;
 	ret->children = NULL;
 	ret->data = NULL;
+	//ret->datab = NULL;
 	return(ret);
 }
 
+
+void initializeDISK(){
+	hdisk = open("metaFiles/hdisk.meta", O_RDWR | O_CREAT , S_IRUSR | S_IWUSR);
+	char *buf = (char*)malloc(sizeof(char)*DISKSIZE);
+	memset(buf, 0, DISKSIZE);
+	write(hdisk, buf, DISKSIZE);
+	close(hdisk);
+}
+
+
 void initializeTIFS(INODE **rt){
-	// printf("Initializing TIFS\n");
-	if(access("metaFiles/hdisk", F_OK ) != -1){
-	    // printf("Loading data from disk ...\n");
+	printf("Initializing TIFS\n");
+	if(access("metaFiles/hdisk.meta", F_OK ) != -1){
+		printf("Loading data from disk ...\n");
 	}
 	
 	else{
-		// printf("No old meta files found initializing new TIFS\n");
+		printf("No old meta files found initializing new TIFS\n");
+		initializeDISK();
 		(*rt) = initializeNode( "/", "TIROOT", 'd',  (*rt));
 	}
 }
@@ -255,14 +276,14 @@ int ti_getattr(const char *apath, struct stat *st){
 	if(nd->type == 'd') st->st_nlink = 2;
 	else st->st_nlink = 1;
 	
-	printf("**********************\n");
-	printf("Inode number %ld\n", nd->i_number);
-	printf("Name %s\n", nd->name);
-	printf("Path %s\n", nd->path);
-	printf("Number of children %d\n", nd->num_children);
-	if(nd->type == 'f')
-		printf("Data of file : %s\n", nd->data);
-	printf("**********************\n");
+	/* printf("**********************\n"); */
+	/* printf("Inode number %ld\n", nd->i_number); */
+	/* printf("Name %s\n", nd->name); */
+	/* printf("Path %s\n", nd->path); */
+	/* printf("Number of children %d\n", nd->num_children); */
+	/* if(nd->type == 'f') */
+	/* 	printf("Data of file : %s\n", nd->data); */
+	/* printf("**********************\n"); */
 	
 	
 	st->st_ino = nd->i_number;
