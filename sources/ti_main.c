@@ -106,7 +106,7 @@ void closeDisk(){
 }
 
 int getInodeNumber(){
-	printf("getInodeNumber called\n");
+	// printf("getInodeNumber called\n");
 	int ino;
 	openDisk();
 	lseek(HDISK, 0, SEEK_SET);
@@ -117,7 +117,19 @@ int getInodeNumber(){
 	lseek(HDISK, 0, SEEK_SET);
 	write(HDISK, IBMAP, INUM);
 	closeDisk();
-	return(ino);
+	return(ino+1);
+}
+
+void returnInodeNumber(int ino){
+	// printf("returnInodeNumber called\n");
+	openDisk();
+	lseek(HDISK, 0, SEEK_SET);
+	memset(IBMAP, '0', INUM);
+	read(HDISK, IBMAP, INUM);
+	IBMAP[ino-1] = '0';
+	lseek(HDISK, 0, SEEK_SET);
+	write(HDISK, IBMAP, INUM);
+	closeDisk();
 }
 
 char * reverse(char * str, int mode){
@@ -202,6 +214,7 @@ int delNode(char *apath){
 	for(i=0; i<parent->num_children; i++){
 		if(strcmp((parent->children[i])->path, path) == 0){
 			if((parent->children[i]->type == 'd') && ((parent->children[i])->num_children != 0)) return(-ENOTEMPTY);
+			returnInodeNumber(parent->children[i]->i_number);
 			free(parent->children[i]);
 			parent->children[i] = (INODE *)malloc(sizeof(INODE));
 			flag = 1;
