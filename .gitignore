@@ -1,0 +1,6 @@
+# Ignore .ti and .o files
+*.ti
+*.o
+
+# Ignore the meta files
+*.meta
