@@ -107,17 +107,44 @@ void closeDisk(){
 	close(HDISK);
 }
 
+
+int getInodeNumber(){
+	// printf("getInodeNumber called\n");
+	int ino;
+	openDisk();
+	lseek(HDISK, 0, SEEK_SET);
+	memset(IBMAP, '0', MAXIN);
+	read(HDISK, IBMAP, MAXIN);
+	for(ino=0; ino<MAXIN; ino++) if(IBMAP[ino] == '0') break;
+	IBMAP[ino] = '1';
+	lseek(HDISK, 0, SEEK_SET);
+	write(HDISK, IBMAP, MAXIN);
+	//	closeDisk();
+	return(ino);
+}
+
+void returnInodeNumber(int ino){
+	// printf("returnInodeNumber called\n");
+	openDisk();
+	lseek(HDISK, 0, SEEK_SET);
+	memset(IBMAP, '0', MAXIN);
+	read(HDISK, IBMAP, MAXIN);
+	IBMAP[ino] = '0';
+	lseek(HDISK, 0, SEEK_SET);
+	write(HDISK, IBMAP, MAXIN);
+	//	closeDisk();
+}
+
 int getDnodeNumber(){
 	int dno;
+	//memset(DBMAP, '0', MAXDN);
 	openDisk();
 	lseek(HDISK, MAXIN, SEEK_SET);
-	memset(DBMAP, '0', DNDISKSZ);
-	read(HDISK, DBMAP, DNDISKSZ);
-	for(dno=0; dno<DNDISKSZ; dno++) if(DBMAP[dno] == '0') break;
+	read(HDISK, DBMAP, MAXDN);
+	for(dno=1; dno<MAXDN; dno++) if(DBMAP[dno] == '0') break;
 	DBMAP[dno] = '1';
-	lseek(HDISK, BLOCKSZ, SEEK_SET);
-	write(HDISK, DBMAP, DNDISKSZ);
-	closeDisk();
+	lseek(HDISK, MAXIN, SEEK_SET);
+	write(HDISK, DBMAP, MAXDN);
 	return(dno);
 }
 
@@ -125,12 +152,12 @@ void returnDnodeNumber(int dno){
 	// printf("returnDnodeNumber called\n");
 	openDisk();
 	lseek(HDISK, MAXIN, SEEK_SET);
-	memset(DBMAP, '0', DNDISKSZ);
-	read(HDISK, DBMAP, DNDISKSZ);
-	IBMAP[dno] = '0';
-	lseek(HDISK, BLOCKSZ, SEEK_SET);
-	write(HDISK, DBMAP, DNDISKSZ);
-	closeDisk();
+	//memset(DBMAP, '0', DNDISKSZ);
+	read(HDISK, DBMAP, MAXDN);
+	DBMAP[dno] = '0';
+	lseek(HDISK, MAXIN, SEEK_SET);
+	write(HDISK, DBMAP, MAXDN);
+	//	closeDisk();
 }
 
 
@@ -141,27 +168,34 @@ void clearInode(int ino){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, buff, INDISKSZ);
-	closeDisk();
+	//	closeDisk();
 }
 
 void clearDnode(int dno){
-	int offset = (MAXIN + MAXDN) + (dno * DNDISKSZ);
+	int offset = (MAXIN + MAXDN) + (MAXIN * INDISKSZ) +(dno * DNDISKSZ);
 	char *buff = (char*)malloc(sizeof(char)*DNDISKSZ);
 	memset(buff, 0, DNDISKSZ);
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, buff, DNDISKSZ);
-	closeDisk();
+	//	closeDisk();
 }
 
-void storeDnode(char *data){
-
+void storeDnode(char *data, int dno){
+	int offset = (MAXIN + MAXDN) + (MAXIN * INDISKSZ) + (dno * DNDISKSZ);
+	openDisk();
+	lseek(HDISK, offset, SEEK_SET);
+	int w = write(HDISK, data, DNDISKSZ);
+	printf("%d bytes written from %s\n", w, data);
+	//	closeDisk();
 }
 
 char * getDnode(int dno){
 	char *toret = (char*)malloc(sizeof(char)*DNDISKSZ);
+	int offset = (MAXIN + MAXDN) + (MAXIN * INDISKSZ) + (dno * DNDISKSZ);
 	openDisk();
-	closeDisk();
+	lseek(HDISK, offset, SEEK_SET);
+	read(HDISK, toret, DNDISKSZ);
 	return(toret);
 }
 
@@ -169,6 +203,7 @@ void storeInode(INODE *nd){
 	// printf("storeInode() called\n");
 	if(nd == NULL) return;
 	int offset = (MAXIN + MAXDN) + (nd->i_number * INDISKSZ);
+	off_t bw;
 	// printf("TILL HERE\n");
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
@@ -183,11 +218,31 @@ void storeInode(INODE *nd){
 	write(HDISK, &(nd->a_time), sizeof(nd->a_time));
 	write(HDISK, &(nd->m_time), sizeof(nd->m_time));
 	write(HDISK, &(nd->b_time), sizeof(nd->b_time));
-	write(HDISK, &(nd->size), sizeof(nd->size));
-	if(nd->type == 'f')
+	bw = lseek(HDISK, 0, SEEK_CUR);
+	if(nd->type == 'f'){
+		if(nd->data == NULL) {nd->data = (char*)malloc(sizeof(char)); nd->data[0] = 0;}
+		int dno = 0, dsize = strlen(nd->data), i = 0, doff = 0;
+		for(i=0; i<DPERN; i++){
+			if(dsize > 0){
+				returnDnodeNumber(nd->datab[i]);
+				clearDnode(nd->datab[i]);
+				dsize -= DNDISKSZ;
+			}
+		}
+		nd->size = 0;
+		printf("Data size of %s is %ld\n", nd->name, strlen(nd->data));
+		for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
+			dno = getDnodeNumber();
+			storeDnode(nd->data + doff, dno);
+			nd->datab[i++] = dno;
+			nd->size += DNDISKSZ;
+		}
+		lseek(HDISK, bw, SEEK_SET);
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
+	}
 	else
 		write(HDISK, nd->children, sizeof(nd->children));
+	write(HDISK, &(nd->size), sizeof(nd->size));
 	closeDisk();
 }
 
@@ -223,8 +278,6 @@ INODE * getInode(int ino){
 	toret->m_time = *((time_t *)buff);
 	read(HDISK, buff, sizeof(toret->b_time));
 	toret->b_time = *((time_t *)buff);
-	read(HDISK, buff, sizeof(toret->size));
-	toret->size = *((off_t *)buff);
 	if(toret->type == 'f'){
 		read(HDISK, buff, sizeof(toret->datab));
 		memcpy(toret->datab, buff, sizeof(toret->datab));
@@ -233,39 +286,21 @@ INODE * getInode(int ino){
 		read(HDISK, buff, sizeof(toret->children));
 		memcpy(toret->children, buff, sizeof(toret->children));
 	}
+	read(HDISK, buff, sizeof(toret->size));
+	toret->size = *((off_t *)buff);
 	free(buff);
+	if(toret->type == 'f'){
+		int i;
+		toret->data = (char*)malloc(sizeof(char) * (toret->size + 1));
+		for(i=0; i<toret->size; i += DNDISKSZ){
+			strcat(toret->data, getDnode(toret->datab[i]));
+		}
+	}
 	// printf("Done getting data for %d\n", ino);
 	closeDisk();
 	return(toret);
 }
 
-
-int getInodeNumber(){
-	// printf("getInodeNumber called\n");
-	int ino;
-	openDisk();
-	lseek(HDISK, 0, SEEK_SET);
-	memset(IBMAP, '0', MAXIN);
-	read(HDISK, IBMAP, MAXIN);
-	for(ino=0; ino<MAXIN; ino++) if(IBMAP[ino] == '0') break;
-	IBMAP[ino] = '1';
-	lseek(HDISK, 0, SEEK_SET);
-	write(HDISK, IBMAP, MAXIN);
-	closeDisk();
-	return(ino);
-}
-
-void returnInodeNumber(int ino){
-	// printf("returnInodeNumber called\n");
-	openDisk();
-	lseek(HDISK, 0, SEEK_SET);
-	memset(IBMAP, '0', MAXIN);
-	read(HDISK, IBMAP, MAXIN);
-	IBMAP[ino] = '0';
-	lseek(HDISK, 0, SEEK_SET);
-	write(HDISK, IBMAP, MAXIN);
-	closeDisk();
-}
 
 char * reverse(char * str, int mode){
     int i;
@@ -368,6 +403,7 @@ int delNode(char *apath){
 	}
 	parent->num_children -= 1;
 	storeInode(parent);
+	storeInode(ROOT);
 	/* printf("INode number of parent %ld\n", parent->i_number); */
 	/* printf("Path of parent %s\n", parent->path); */
 	/* printf("Name of parent %s\n", parent->name); */
@@ -396,7 +432,7 @@ int addNode(char * apath, char type){
 	parent->children[parent->num_children - 1] = child->i_number;
 	storeInode(parent);
 	storeInode(child);
-	
+	storeInode(ROOT);
 	/* printf("Name of the node is %s\n", getInode(parent->children[parent->num_children - 1])->name); */
 	/* printf("Path of the node is %s\n", getInode(parent->children[parent->num_children - 1])->path); */
 	/* printf("Inode of the node is %ld\n", getInode(parent->children[parent->num_children - 1])->i_number); */
@@ -446,7 +482,6 @@ void initializeTIFS(INODE **rt){
 	DBMAP = (char*)malloc(sizeof(char)*(MAXDN));
 	if(access("metaFiles/HDISK.meta", F_OK ) != -1){
 		// printf("Loading data from disk ...\n");
-		(*rt) = getInode(0);
 	}
 	
 	else{
@@ -464,8 +499,8 @@ void initializeTIFS(INODE **rt){
 		
 		(*rt) = initializeNode( "/", "TIROOT", 'd',  (*rt));
 		storeInode((*rt));
-		(*rt) = getInode(0);
 	}
+	(*rt) = getInode(0);
 }
 
 
@@ -555,7 +590,8 @@ int ti_write(const char *apath, const char *buf, size_t size, off_t offset, stru
 	else
 		nd->data = (char *)realloc(nd->data, sizeof(char)*(nd->size));
 	memcpy(nd->data + offset, buf, size);
-	nd->data[((nd->size)--) - 1] = '\0';
+	//nd->data[((nd->size)--) - 1] = '\0';
+	storeInode(nd);
 	return(size);
 }
 
@@ -565,8 +601,10 @@ int ti_read(const char *apath, char *buf, size_t size, off_t offset,struct fuse_
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
 	if(nd->size == 0) return(0);
+	if(nd->data == NULL) return(0);
 	nd->a_time = time(NULL);
 	memcpy(buf, nd->data + offset, nd->size);
+	storeInode(nd);
 	return(size);
 }
 
@@ -584,6 +622,7 @@ int ti_chmod(const char *apath, mode_t new){
 	if(nd == NULL) return(-ENOENT);
 	nd->m_time = time(NULL);
 	nd->permissions = new;
+	storeInode(nd);
 	return(0);
 }
 
@@ -593,10 +632,12 @@ int ti_truncate(const char *apath, off_t size){
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
 	if(nd->size == 0) return(0);
-	free(nd->data);
+	if(nd->data == NULL) return(0);
 	nd->m_time = time(NULL);
 	nd->a_time = time(NULL);
-	nd->data = (char*)malloc(sizeof(char));
+	free(nd->data);
+	nd->data = NULL;
+	storeInode(nd);
 	return(0);
 }
 
