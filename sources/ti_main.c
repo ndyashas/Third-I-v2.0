@@ -232,6 +232,7 @@ void storeInode(INODE *nd){
 			nd->size += wlen;
 			openDisk();
 		}
+		for(i=i;i<DPERN;i++) {closeDisk();returnDnodeNumber(nd->datab[i]);clearDnode(nd->datab[i]);nd->datab[i]=0;openDisk();}
 		lseek(HDISK, bw, SEEK_SET);
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
 	}
