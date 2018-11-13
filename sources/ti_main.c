@@ -8,15 +8,15 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdint.h>
+#include <math.h>
 
-#define BLOCKSZ 4096
 #define MAXIN 30
 #define MAXDN 300
 #define INDISKSZ 512
-#define DNDISKSZ 128
+#define DNDISKSZ 256
 #define DPERN 10
 
-const int DISKSIZE = (2 * BLOCKSZ) + (MAXIN * INDISKSZ) + (MAXDN * DNDISKSZ);
+const int DISKSIZE = (MAXIN + MAXDN) + (MAXIN * INDISKSZ) + (MAXDN * DNDISKSZ);
 
 typedef struct INODE{
 	char type;
@@ -49,7 +49,6 @@ const mode_t GRP_NPF = S_IRGRP | S_IWGRP;
 const mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
 const mode_t GRP_NPD = S_IRGRP | S_IWGRP | S_IFDIR;
 
-
 void openDisk();
 void closeDisk();
 int delNode(char *);
@@ -71,7 +70,6 @@ void initializeTIFS(INODE **);
 INODE * getNodeFromPath(char *, INODE *);
 INODE * initializeNode(char *, char *, char, INODE *);
 
-
 int ti_rmdir(const char *);
 int ti_unlink(const char *);
 int ti_access(const char *, int);
@@ -85,7 +83,6 @@ int ti_open(const char *, struct fuse_file_info *);
 int ti_read(const char *, char *, size_t , off_t ,struct fuse_file_info *);
 int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info *);
 int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_info *);
-
 
 static struct fuse_operations operations = {
     .open       = ti_open,
@@ -102,11 +99,6 @@ static struct fuse_operations operations = {
     .readdir    = ti_readdir,
     .truncate   = ti_truncate,
 };
-
-int main( int argc, char *argv[] ){
-    initializeTIFS(&ROOT);
-    return fuse_main(argc, argv, &operations);
-}
 
 void openDisk(){HDISK = open("metaFiles/HDISK.meta", O_RDWR | O_CREAT , S_IRUSR | S_IWUSR);}
 void closeDisk(){close(HDISK);}
@@ -248,7 +240,6 @@ INODE * getInode(int ino){
 	INODE *toret = (INODE *)malloc(sizeof(INODE));
 	char *buff = (char*)malloc(sizeof(char)*INDISKSZ);
 	openDisk();
-	
 	toret->i_number = ino;
 	int offset = (MAXIN + MAXDN) + (ino * INDISKSZ);
 	lseek(HDISK, offset, SEEK_SET);
@@ -383,9 +374,7 @@ int delNode(char *apath){
 			clearInode(child->i_number);
 			flag = 1;
 		}
-		if(flag){
-			if(i != parent->num_children-1) parent->children[i] = parent->children[i+1];
-		}
+		if(flag) if(i != parent->num_children-1) parent->children[i] = parent->children[i+1];
 	}
 	parent->num_children -= 1;
 	storeInode(parent);
@@ -415,14 +404,8 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	strcpy(ret->path, path);
 	strcpy(ret->name, name);
 	ret->type = type;
-	if(type == 'd'){  
-        ret->permissions = S_IFDIR | 0755;
-		ret->size = INDISKSZ;
-    }     
-    else{
-    	ret->permissions = S_IFREG | 0644;
-		ret->size = 0;
-    } 
+	if(type == 'd'){ret->permissions = S_IFDIR | 0755;ret->size = INDISKSZ;}     
+    else{ret->permissions = S_IFREG | 0644;ret->size = 0;} 
 	ret->user_id = getuid();
 	ret->group_id = getgid();
 	ret->num_children = 0;
@@ -474,8 +457,7 @@ int ti_getattr(const char *apath, struct stat *st){
 	/* else */
 	/* 	for(int i=0; i<nd->num_children; i++) printf(" %ld --", nd->children[i]); */
 	/* printf("\n**********************\n"); */
-	
-	
+		
 	st->st_ino = nd->i_number;
 	st->st_nlink += nd->num_children;
 	st->st_mode = nd->permissions;
@@ -484,9 +466,11 @@ int ti_getattr(const char *apath, struct stat *st){
 	st->st_atime = nd->a_time;
 	st->st_mtime = nd->m_time;
 	st->st_size = nd->size;
-	st->st_blocks = (((nd->size) / 512) + 1);
+	st->st_blocks = ceil((float)nd->size / (float)(DNDISKSZ));
+	st->st_blksize = DNDISKSZ;
 	return(0);
 }
+
 
 int ti_readdir(const char *apath, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ){
 	filler(buffer, ".", NULL, 0 ); 
@@ -529,17 +513,6 @@ int ti_read(const char *apath, char *buf, size_t size, off_t offset,struct fuse_
 }
 
 
-int ti_chmod(const char *apath, mode_t new){
-	if(apath == NULL) return(-ENOENT);
-	INODE * nd = getNodeFromPath((char *) apath, ROOT);
-	if(nd == NULL) return(-ENOENT);
-	nd->m_time = time(NULL);
-	nd->permissions = new;
-	storeInode(nd);
-	return(0);
-}
-
-
 int ti_truncate(const char *apath, off_t size){
 	if(apath == NULL) return(-ENOENT);
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
@@ -550,6 +523,17 @@ int ti_truncate(const char *apath, off_t size){
 	nd->a_time = time(NULL);
 	free(nd->data);
 	nd->data = NULL;
+	storeInode(nd);
+	return(0);
+}
+
+
+int ti_chmod(const char *apath, mode_t new){
+	if(apath == NULL) return(-ENOENT);
+	INODE * nd = getNodeFromPath((char *) apath, ROOT);
+	if(nd == NULL) return(-ENOENT);
+	nd->m_time = time(NULL);
+	nd->permissions = new;
 	storeInode(nd);
 	return(0);
 }
@@ -569,8 +553,10 @@ int ti_open(const char *apath, struct fuse_file_info *fi){
 }
 
 
-int ti_mkdir(const char * apath, mode_t x){return(addNode((char*) apath, 'd'));}
+int ti_utime(const char *apath, struct utimbuf *tv){return 0;}
 int ti_rmdir(const char * apath){return(delNode((char *) apath));}
 int ti_unlink(const char *apath){return(delNode((char *) apath));}
+int ti_mkdir(const char * apath, mode_t x){return(addNode((char*) apath, 'd'));}
 int ti_mknod(const char * apath, mode_t x, dev_t y){return(addNode((char*) apath, 'f'));}
-int ti_utime(const char *apath, struct utimbuf *tv){return 0;}
+
+int main( int argc, char *argv[] ){initializeTIFS(&ROOT);return fuse_main(argc, argv, &operations);}
