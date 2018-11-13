@@ -159,6 +159,7 @@ void clearInode(int ino){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, buff, INDISKSZ);
+	free(buff);
 	closeDisk();
 }
 
@@ -169,6 +170,7 @@ void clearDnode(int dno){
 	openDisk();
 	lseek(HDISK, offset, SEEK_SET);
 	write(HDISK, buff, DNDISKSZ);
+	free(buff);
 	closeDisk();
 }
 
@@ -212,7 +214,7 @@ void storeInode(INODE *nd){
 	bw = lseek(HDISK, 0, SEEK_CUR);
 	if(nd->type == 'f'){
 		int dno = 0, dsize = 0, i = 0, doff = 0, wlen;
-		if(nd->data == NULL) {nd->size=0;/*nd->data = (char*)malloc(sizeof(char)); nd->data[0] = 0;*/}
+		if(nd->data == NULL) nd->size=0;
 		else{
 			nd->size = 0; dsize = strlen(nd->data);
 			for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
@@ -296,7 +298,7 @@ char * reverse(char * str, int mode){
         retval[len - i - 1] = str[i];
     }
     if(retval[0] == '/' && mode == 1) retval++;
-    return retval;
+    return(retval);
 }
 
 char * getName(char ** copy_path){
@@ -322,7 +324,7 @@ char * getName(char ** copy_path){
     retval[retlen] = '\0';
     retval = reverse(retval, 0);        
     *(copy_path) = reverse(*(copy_path), 0);
-    return retval;
+    return(retval);
 }
 
 
@@ -332,6 +334,7 @@ char * getDir(char * apath){
 	if(path == NULL) return(NULL);
 	char *dirp = reverse((char*)path, 1);
 	while(dirp[0] != '/') dirp++;
+	free(path);
 	return(reverse(dirp, 0));
 }
 
@@ -341,13 +344,15 @@ INODE * getNodeFromPath(char * apath, INODE *parent){
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
 	if((path[strlen(path)-1] == '/') && (strcmp("/", path) != 0)) path[strlen(path) - 1] = '\0';
-	INODE *retn;
+	INODE *retn, *tmp;
 	if((path == NULL)||(parent == NULL)||(strcmp(path, "") == 0)) return(NULL);
 	if(strcmp(parent->path, path) == 0) return(parent);
 	
 	for(i=0; i<parent->num_children; i++){
-		retn = getNodeFromPath(path, getInode((parent->children)[i]));
-		if(retn != NULL) return(retn);
+		tmp = getInode((parent->children)[i]);
+		retn = getNodeFromPath(path, tmp);
+		if(retn != NULL) {return(retn);}
+		free(tmp);
 	}
 	return(NULL);
 }
@@ -395,6 +400,7 @@ int addNode(char * apath, char type){
 	storeInode(parent);
 	storeInode(child);
 	storeInode(ROOT);
+	free(path);
 	return(0);
 }
 
