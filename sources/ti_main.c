@@ -219,18 +219,20 @@ void storeInode(INODE *nd){
 	write(HDISK, &(nd->b_time), sizeof(nd->b_time));
 	bw = lseek(HDISK, 0, SEEK_CUR);
 	if(nd->type == 'f'){
-		if(nd->data == NULL) {nd->data = (char*)malloc(sizeof(char)); nd->data[0] = 0;}
-		int dno = 0, dsize = strlen(nd->data), i = 0, doff = 0, wlen;
-		nd->size = 0;
-		for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
-			closeDisk();
-			returnDnodeNumber(nd->datab[i]);
-			clearDnode(nd->datab[i]);
-			dno = getDnodeNumber();
-			wlen = storeDnode(nd->data + doff, dno);
-			nd->datab[i] = dno;
-			nd->size += wlen;
-			openDisk();
+		int dno = 0, dsize = 0, i = 0, doff = 0, wlen;
+		if(nd->data == NULL) {nd->size=0;/*nd->data = (char*)malloc(sizeof(char)); nd->data[0] = 0;*/}
+		else{
+			nd->size = 0; dsize = strlen(nd->data);
+			for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
+				closeDisk();
+				returnDnodeNumber(nd->datab[i]);
+				clearDnode(nd->datab[i]);
+				dno = getDnodeNumber();
+				wlen = storeDnode(nd->data + doff, dno);
+				nd->datab[i] = dno;
+				nd->size += wlen;
+				openDisk();
+			}
 		}
 		for(i=i;i<DPERN;i++) {closeDisk();returnDnodeNumber(nd->datab[i]);clearDnode(nd->datab[i]);nd->datab[i]=0;openDisk();}
 		lseek(HDISK, bw, SEEK_SET);
@@ -285,8 +287,11 @@ INODE * getInode(int ino){
 	free(buff);
 	closeDisk();
 	if(toret->type == 'f'){
-		toret->data = (char*)malloc(sizeof(char) * (toret->size + 1));
-		for(int i=0; strlen(toret->data) < toret->size; i++) strcat(toret->data, getDnode(toret->datab[i]));
+		if(toret->size){
+			toret->data = (char*)malloc(sizeof(char) * (toret->size));
+			for(int i=0; strlen(toret->data) < toret->size; i++) strcat(toret->data, getDnode(toret->datab[i]));
+		}
+		else toret->data = NULL;
 	}
 	return(toret);
 }
