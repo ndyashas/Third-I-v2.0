@@ -85,19 +85,19 @@ int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info 
 int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_info *);
 
 static struct fuse_operations operations = {
-    .open       = ti_open,
-    .read       = ti_read,
-    .mkdir      = ti_mkdir,
-    .rmdir      = ti_rmdir,
-    .mknod      = ti_mknod,
-    .write      = ti_write,
-    .utime      = ti_utime,
-    .chmod      = ti_chmod,
-    .access     = ti_access,
-    .unlink     = ti_unlink,
-    .getattr    = ti_getattr,
-    .readdir    = ti_readdir,
-    .truncate   = ti_truncate,
+	.open       = ti_open,
+	.read       = ti_read,
+	.mkdir      = ti_mkdir,
+	.rmdir      = ti_rmdir,
+	.mknod      = ti_mknod,
+	.write      = ti_write,
+	.utime      = ti_utime,
+	.chmod      = ti_chmod,
+	.access     = ti_access,
+	.unlink     = ti_unlink,
+	.getattr    = ti_getattr,
+	.readdir    = ti_readdir,
+	.truncate   = ti_truncate,
 };
 
 void openDisk(){HDISK = open("metaFiles/HDISK.meta", O_RDWR | O_CREAT , S_IRUSR | S_IWUSR);}
@@ -291,40 +291,40 @@ INODE * getInode(int ino){
 
 
 char * reverse(char * str, int mode){
-    int len = strlen(str);
-    char * retval = (char *)calloc(sizeof(char), (len + 1));
-    for(int i = 0; i <= len/2; i++){
-        retval[i] = str[len - 1 -i];
-        retval[len - i - 1] = str[i];
-    }
-    if(retval[0] == '/' && mode == 1) retval++;
-    return(retval);
+	int len = strlen(str);
+	char * retval = (char *)calloc(sizeof(char), (len + 1));
+	for(int i = 0; i <= len/2; i++){
+		retval[i] = str[len - 1 -i];
+		retval[len - i - 1] = str[i];
+	}
+	if(retval[0] == '/' && mode == 1) retval++;
+	return(retval);
 }
 
 char * getName(char ** copy_path){
-    char * retval = (char *)calloc(sizeof(char), 1);
-    int retlen = 0;
-    char temp;
-    char * tempstr;
-    *copy_path = reverse(*copy_path, 1);
-    temp = **(copy_path);
-    while(temp != '/'){    
-        tempstr = (char *)calloc(sizeof(char), (retlen + 2));
-        strcpy(tempstr, retval);
-        retlen += 1;
-        tempstr[retlen - 1] = temp;
-        retval = (char *)realloc(retval, sizeof(char) * (retlen + 1));
-        strcpy(retval, tempstr);
-        (*copy_path)++;
-        temp = **(copy_path);
-        free(tempstr);
-    }
-    if(strlen(*copy_path) > 1) (*copy_path)++;
-    retval = (char *)realloc(retval, sizeof(char) * (retlen + 1));
-    retval[retlen] = '\0';
-    retval = reverse(retval, 0);        
-    *(copy_path) = reverse(*(copy_path), 0);
-    return(retval);
+	char * retval = (char *)calloc(sizeof(char), 1);
+	int retlen = 0;
+	char temp;
+	char * tempstr;
+	*copy_path = reverse(*copy_path, 1);
+	temp = **(copy_path);
+	while(temp != '/'){    
+		tempstr = (char *)calloc(sizeof(char), (retlen + 2));
+		strcpy(tempstr, retval);
+		retlen += 1;
+		tempstr[retlen - 1] = temp;
+		retval = (char *)realloc(retval, sizeof(char) * (retlen + 1));
+		strcpy(retval, tempstr);
+		(*copy_path)++;
+		temp = **(copy_path);
+		free(tempstr);
+	}
+	if(strlen(*copy_path) > 1) (*copy_path)++;
+	retval = (char *)realloc(retval, sizeof(char) * (retlen + 1));
+	retval[retlen] = '\0';
+	retval = reverse(retval, 0);        
+	*(copy_path) = reverse(*(copy_path), 0);
+	return(retval);
 }
 
 
@@ -347,7 +347,7 @@ INODE * getNodeFromPath(char * apath, INODE *parent){
 	INODE *retn, *tmp;
 	if((path == NULL)||(parent == NULL)||(strcmp(path, "") == 0)) return(NULL);
 	if(strcmp(parent->path, path) == 0) return(parent);
-	
+
 	for(i=0; i<parent->num_children; i++){
 		tmp = getInode((parent->children)[i]);
 		retn = getNodeFromPath(path, tmp);
@@ -411,7 +411,7 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	strcpy(ret->name, name);
 	ret->type = type;
 	if(type == 'd'){ret->permissions = S_IFDIR | 0755;ret->size = INDISKSZ;}     
-    else{ret->permissions = S_IFREG | 0644;ret->size = 0;} 
+	else{ret->permissions = S_IFREG | 0644;ret->size = 0;} 
 	ret->user_id = getuid();
 	ret->group_id = getgid();
 	ret->num_children = 0;
@@ -463,7 +463,7 @@ int ti_getattr(const char *apath, struct stat *st){
 	/* else */
 	/* 	for(int i=0; i<nd->num_children; i++) printf(" %ld --", nd->children[i]); */
 	/* printf("\n**********************\n"); */
-		
+	
 	st->st_ino = nd->i_number;
 	st->st_nlink += nd->num_children;
 	st->st_mode = nd->permissions;
@@ -555,11 +555,21 @@ int ti_access(const char * apath, int mask){
 int ti_open(const char *apath, struct fuse_file_info *fi){
 	INODE * nd = getNodeFromPath((char *) apath, ROOT);
 	if(nd == NULL) return(-ENOENT);
+	nd->a_time = time(NULL);
+	storeInode(nd);
 	return(0);
 }
 
 
-int ti_utime(const char *apath, struct utimbuf *tv){return 0;}
+int ti_utime(const char *apath, struct utimbuf *tv){
+	INODE * nd = getNodeFromPath((char *) apath, ROOT);
+	nd->m_time = time(NULL);
+	nd->a_time = time(NULL);
+	storeInode(nd);
+	return(0);
+}
+
+
 int ti_rmdir(const char * apath){return(delNode((char *) apath));}
 int ti_unlink(const char *apath){return(delNode((char *) apath));}
 int ti_mkdir(const char * apath, mode_t x){return(addNode((char*) apath, 'd'));}
