@@ -64,8 +64,8 @@ void storeInode(INODE *);
 int addNode(char *, char);
 char * reverse(char *, int);
 int storeDnode(char *, int);
-void returnDnodeNumber(int);
-void returnInodeNumber(int);
+void clearDnodeNumber(int);
+void clearInodeNumber(int);
 void initializeTIFS(INODE **);
 INODE * getNodeFromPath(char *, INODE *);
 INODE * initializeNode(char *, char *, char, INODE *);
@@ -117,7 +117,7 @@ int getInodeNumber(){
 	return(ino);
 }
 
-void returnInodeNumber(int ino){
+void clearInodeNumber(int ino){
 	openDisk();
 	lseek(HDISK, 0, SEEK_SET);
 	memset(IBMAP, '0', MAXIN);
@@ -141,7 +141,7 @@ int getDnodeNumber(){
 	return(dno);
 }
 
-void returnDnodeNumber(int dno){
+void clearDnodeNumber(int dno){
 	openDisk();
 	lseek(HDISK, MAXIN, SEEK_SET);
 	read(HDISK, DBMAP, MAXDN);
@@ -219,7 +219,7 @@ void storeInode(INODE *nd){
 			nd->size = 0; dsize = strlen(nd->data);
 			for(dsize = strlen(nd->data), i=0, doff = 0; dsize > 0; dsize -= DNDISKSZ, doff += DNDISKSZ, i++){
 				closeDisk();
-				returnDnodeNumber(nd->datab[i]);
+				clearDnodeNumber(nd->datab[i]);
 				clearDnode(nd->datab[i]);
 				dno = getDnodeNumber();
 				wlen = storeDnode(nd->data + doff, dno);
@@ -228,7 +228,7 @@ void storeInode(INODE *nd){
 				openDisk();
 			}
 		}
-		for(i=i;i<DPERN;i++) {closeDisk();returnDnodeNumber(nd->datab[i]);clearDnode(nd->datab[i]);nd->datab[i]=0;openDisk();}
+		for(i=i;i<DPERN;i++) {closeDisk();clearDnodeNumber(nd->datab[i]);clearDnode(nd->datab[i]);nd->datab[i]=0;openDisk();}
 		lseek(HDISK, bw, SEEK_SET);
 		write(HDISK, &(nd->datab), sizeof(nd->datab));
 	}
@@ -371,11 +371,11 @@ int delNode(char *apath){
 			if((child->type == 'd') && (child->num_children != 0)) return(-ENOTEMPTY);
 			if((child->type == 'f') && (child->data != NULL)){
 				for(dsize = strlen(child->data), doff=0, j=0; dsize>0; dsize -= DNDISKSZ, doff += DNDISKSZ, j++){
-					returnDnodeNumber(child->datab[j]);
+					clearDnodeNumber(child->datab[j]);
 					clearDnode(child->datab[j]);
 				}
 			}
-			returnInodeNumber(child->i_number);
+			clearInodeNumber(child->i_number);
 			clearInode(child->i_number);
 			flag = 1;
 		}
