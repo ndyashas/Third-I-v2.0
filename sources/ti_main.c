@@ -10,10 +10,10 @@
 #include <stdint.h>
 #include <math.h>
 
-#define MAXIN 30
-#define MAXDN 300
+#define MAXIN 1000
+#define MAXDN 10000
 #define INDISKSZ 512
-#define DNDISKSZ 256
+#define DNDISKSZ 1024
 #define DPERN 10
 
 const int DISKSIZE = (MAXIN + MAXDN) + (MAXIN * INDISKSZ) + (MAXDN * DNDISKSZ);
@@ -80,6 +80,7 @@ int ti_mknod(const char *, mode_t, dev_t);
 int ti_getattr(const char *, struct stat *);
 int ti_utime(const char *, struct utimbuf *);
 int ti_open(const char *, struct fuse_file_info *);
+int ti_create(const char *, mode_t , struct fuse_file_info *);
 int ti_read(const char *, char *, size_t , off_t ,struct fuse_file_info *);
 int ti_write(const char *, const char *, size_t , off_t , struct fuse_file_info *);
 int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_info *);
@@ -93,6 +94,7 @@ static struct fuse_operations operations = {
 	.write      = ti_write,
 	.utime      = ti_utime,
 	.chmod      = ti_chmod,
+	.create     = ti_create,
 	.access     = ti_access,
 	.unlink     = ti_unlink,
 	.getattr    = ti_getattr,
@@ -531,14 +533,20 @@ int ti_truncate(const char *apath, off_t size){
 }
 
 
+int ti_create(const char *apath, mode_t mode, struct fuse_file_info *fi){
+    printf("Create called \n");
+    return(addNode((char*) apath, 'f'));
+}
+
+
 int ti_chmod(const char *apath, mode_t new){
-	if(apath == NULL) return(-ENOENT);
-	INODE * nd = getNodeFromPath((char *) apath, ROOT);
-	if(nd == NULL) return(-ENOENT);
-	nd->m_time = time(NULL);
-	nd->permissions = new;
-	storeInode(nd);
-	return(0);
+    if(apath == NULL) return(-ENOENT);
+    INODE * nd = getNodeFromPath((char *) apath, ROOT);
+    if(nd == NULL) return(-ENOENT);
+    nd->m_time = time(NULL);
+    nd->permissions = new;
+    storeInode(nd);
+    return(0);
 }
 
 
