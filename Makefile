@@ -5,7 +5,7 @@ OPFLAG = -o fs.ti
 COMPIR = gcc
 
 
-start : run
+start : debug
 
 run : compile
 	./fs.ti -f mountPoint -o nonempty
