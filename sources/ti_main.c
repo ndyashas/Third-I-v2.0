@@ -44,11 +44,6 @@ char *IBMAP;
 char *DBMAP;
 unsigned long int IN = 0;
 
-const mode_t USR_NPF = S_IRUSR | S_IWUSR;
-const mode_t GRP_NPF = S_IRGRP | S_IWGRP;
-const mode_t USR_NPD = S_IRUSR | S_IWUSR | S_IFDIR;
-const mode_t GRP_NPD = S_IRGRP | S_IWGRP | S_IFDIR;
-
 void openDisk();
 void closeDisk();
 int delNode(char *);
@@ -293,7 +288,6 @@ INODE * getInode(int ino){
 	return(toret);
 }
 
-
 char * reverse(char * str, int mode){
 	int len = strlen(str);
 	char * retval = (char *)calloc(sizeof(char), (len + 1));
@@ -331,7 +325,6 @@ char * getName(char ** copy_path){
 	return(retval);
 }
 
-
 char * getDir(char * apath){
 	char *path = (char*)malloc(sizeof(char)*strlen(apath));
 	strcpy(path, apath);
@@ -341,7 +334,6 @@ char * getDir(char * apath){
 	free(path);
 	return(reverse(dirp, 0));
 }
-
 
 INODE * getNodeFromPath(char * apath, INODE *parent){
 	int i;
@@ -360,7 +352,6 @@ INODE * getNodeFromPath(char * apath, INODE *parent){
 	}
 	return(NULL);
 }
-
 
 int delNode(char *apath){
 	int i, j, flag = 0, dsize, doff;
@@ -408,7 +399,6 @@ int addNode(char * apath, char type){
 	return(0);
 }
 
-
 INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	INODE *ret = (INODE*)malloc(sizeof(INODE));
 	strcpy(ret->path, path);
@@ -428,7 +418,6 @@ INODE * initializeNode( char *path, char *name, char type, INODE *parent){
 	ret->data = NULL;
 	return(ret);
 }
-
 
 void initializeTIFS(INODE **rt){
 	IBMAP = (char*)malloc(sizeof(char)*(MAXIN));
@@ -535,12 +524,6 @@ int ti_truncate(const char *apath, off_t size){
 }
 
 
-int ti_create(const char *apath, mode_t mode, struct fuse_file_info *fi){
-    printf("Create called \n");
-    return(addNode((char*) apath, 'f'));
-}
-
-
 int ti_chmod(const char *apath, mode_t new){
     if(apath == NULL) return(-ENOENT);
     INODE * nd = getNodeFromPath((char *) apath, ROOT);
@@ -595,5 +578,6 @@ int ti_rmdir(const char * apath){return(delNode((char *) apath));}
 int ti_unlink(const char *apath){return(delNode((char *) apath));}
 int ti_mkdir(const char * apath, mode_t x){return(addNode((char*) apath, 'd'));}
 int ti_mknod(const char * apath, mode_t x, dev_t y){return(addNode((char*) apath, 'f'));}
+int ti_create(const char *apath, mode_t mode, struct fuse_file_info *fi){return(addNode((char*) apath, 'f'));}
 
-int main( int argc, char *argv[] ){initializeTIFS(&ROOT);return fuse_main(argc, argv, &operations);}
+int main(int argc, char *argv[]){initializeTIFS(&ROOT);return fuse_main(argc, argv, &operations);}
