@@ -72,6 +72,7 @@ INODE * initializeNode(char *, char *, char, INODE *);
 
 int ti_rmdir(const char *);
 int ti_unlink(const char *);
+int ti_link(const char *, const char *);
 int ti_access(const char *, int);
 int ti_chmod(const char *, mode_t );
 int ti_mkdir(const char *, mode_t );
@@ -88,6 +89,7 @@ int ti_readdir(const char *, void *, fuse_fill_dir_t , off_t , struct fuse_file_
 static struct fuse_operations operations = {
 	.open       = ti_open,
 	.read       = ti_read,
+	.link       = ti_link,
 	.mkdir      = ti_mkdir,
 	.rmdir      = ti_rmdir,
 	.mknod      = ti_mknod,
@@ -546,6 +548,20 @@ int ti_chmod(const char *apath, mode_t new){
     nd->m_time = time(NULL);
     nd->permissions = new;
     storeInode(nd);
+    return(0);
+}
+
+
+int ti_link(const char *oldp, const char *newp){
+    INODE *old = getNodeFromPath((char *) oldp, ROOT);
+    if(old == NULL) return(-ENOENT);
+    addNode((char*) newp, old->type);
+    INODE *new = getNodeFromPath((char *) newp, ROOT);
+    old->num_children += 1;
+    new->data = (char *)malloc(sizeof(char)*(strlen(old->data)+1));
+    strcpy(new->data, old->data);
+    storeInode(old);
+    storeInode(new);
     return(0);
 }
 
