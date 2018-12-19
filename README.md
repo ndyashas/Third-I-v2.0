@@ -21,4 +21,4 @@ thus , do the following to unmount the FS. Thus,  use
 ``` $ make format``` to unmount and format TIFS.
 
 ## Contributions
-* Kind souls may send a Pull request with appropriate Bug fix/ New feature constructive contributions are appreciated
+* Kind souls may send a Pull request with appropriate Bug fix/ New feature . Constructive contributions are appreciated
