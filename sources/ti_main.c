@@ -525,27 +525,27 @@ int ti_truncate(const char *apath, off_t size){
 
 
 int ti_chmod(const char *apath, mode_t new){
-    if(apath == NULL) return(-ENOENT);
-    INODE * nd = getNodeFromPath((char *) apath, ROOT);
-    if(nd == NULL) return(-ENOENT);
-    nd->m_time = time(NULL);
-    nd->permissions = new;
-    storeInode(nd);
-    return(0);
+	if(apath == NULL) return(-ENOENT);
+	INODE * nd = getNodeFromPath((char *) apath, ROOT);
+	if(nd == NULL) return(-ENOENT);
+	nd->m_time = time(NULL);
+	nd->permissions = new;
+	storeInode(nd);
+	return(0);
 }
 
 
 int ti_link(const char *oldp, const char *newp){
-    INODE *old = getNodeFromPath((char *) oldp, ROOT);
-    if(old == NULL) return(-ENOENT);
-    addNode((char*) newp, old->type);
-    INODE *new = getNodeFromPath((char *) newp, ROOT);
-    old->num_children += 1;
-    new->data = (char *)malloc(sizeof(char)*(strlen(old->data)+1));
-    strcpy(new->data, old->data);
-    storeInode(old);
-    storeInode(new);
-    return(0);
+	INODE *old = getNodeFromPath((char *) oldp, ROOT);
+	if(old == NULL) return(-ENOENT);
+	addNode((char*) newp, old->type);
+	INODE *new = getNodeFromPath((char *) newp, ROOT);
+	old->num_children += 1;
+	new->data = (char *)malloc(sizeof(char)*(strlen(old->data)+1));
+	strcpy(new->data, old->data);
+	storeInode(old);
+	storeInode(new);
+	return(0);
 }
 
 
